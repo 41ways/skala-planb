@@ -55,6 +55,20 @@ public interface LedgerRepository extends JpaRepository<Ledger, Long> {
     /** 에스크로·예약금에 대응하는 원장 기록이 실제로 남았는지 확인 */
     boolean existsByRefTypeAndRefIdAndReason(String refType, Long refId, LedgerReason reason);
 
+    /**
+     * 거래 요약용 — 한 계정에 특정 사유로 들어온(또는 나간) 금액 합.
+     *
+     * 판매 정산 수령액을 원장에서 구함. 에스크로에서 세면 수수료를 뗀 실수령액이 아니라
+     * 거래액이 나옴 — 판매자가 실제로 받은 돈은 원장에만 있음.
+     */
+    @Query("""
+            SELECT COALESCE(SUM(l.amount), 0) FROM Ledger l
+            WHERE l.accountId = :accountId AND l.reason = :reason AND l.entryType = :entryType
+            """)
+    long sumAmountByAccountAndReason(@Param("accountId") String accountId,
+                                     @Param("reason") LedgerReason reason,
+                                     @Param("entryType") EntryType entryType);
+
     /** 계정별 잔액 조회 결과 */
     interface AccountBalance {
         String getAccountId();

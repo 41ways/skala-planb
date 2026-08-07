@@ -44,4 +44,12 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
     @EntityGraph(attributePaths = "owner")
     List<Ticket> findByStatusInAndExpiryWarnedAtIsNullAndExpiresAtBetween(
             Collection<TicketStatus> statuses, LocalDateTime from, LocalDateTime to);
+
+    /**
+     * 거래 요약용 — 회원의 상태별 티켓 건수.
+     *
+     * 파생 쿼리메서드 하나로 끝남. 단일 회원 기준 필터링이라 GROUP BY로 행을 접을 일이
+     * 없어서 MyBatis까지 갈 이유가 없음. 그 경계 판단은 AnalysisMapper 주석 참조.
+     */
+    long countByOwnerIdAndStatus(String ownerId, TicketStatus status);
 }

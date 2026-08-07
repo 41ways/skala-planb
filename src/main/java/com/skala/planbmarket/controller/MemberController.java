@@ -72,6 +72,18 @@ public class MemberController {
         return Response.success(memberService.get(id));
     }
 
+    @Operation(summary = "거래 요약",
+            description = """
+                    보유·판매·구매 현황을 한 번에. 공개 조회.
+
+                    이건 JPA로 만들었다. 전부 단일 회원 기준 건수·합계라 여러 행을 구간으로
+                    접을 일이 없어서, 같은 '통계'라도 카테고리별 현황(MyBatis)과는 성격이 다르다.
+                    그 경계 판단이 이 프로젝트의 설계 결과물 중 하나다.""")
+    @GetMapping("/{id}/summary")
+    public Response<MemberResponse.TradeSummary> summary(@PathVariable String id) {
+        return Response.success(memberService.summary(id));
+    }
+
     @Operation(summary = "예치금 충전",
             description = "본인만 가능. 실제 결제는 없고 EXTERNAL 계정에서 들어온 것으로 원장에 기록됨")
     @PostMapping("/{id}/charge")

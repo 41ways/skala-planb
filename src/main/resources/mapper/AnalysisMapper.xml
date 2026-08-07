@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+  분석·통계 쿼리.
+
+  세 쿼리 모두 여러 테이블을 조인해서 GROUP BY로 행을 접고 CASE WHEN으로 갈래를 나눔.
+  이게 MyBatis를 쓴 이유임 — JPA로 하면 엔티티를 전부 메모리에 올려 자바에서 세어야 하는데,
+  여기서는 DB가 접은 결과만 받아옴.
+
+  컬럼 별칭은 전부 snake_case로 씀. application.yml의 map-underscore-to-camel-case가
+  켜져 있어서 자동으로 camelCase 필드에 꽂힘.
+-->
+<mapper namespace="com.skala.planbmarket.mapper.AnalysisMapper">
+
+    <!--
+      가격 추천 표본 — 같은 카테고리 + 같은 잔여시간 구간.
+
+      구간 판정을 CASE WHEN이 아니라 파라미터 비교로 한 이유:
+      경계값이 자바(RemainingBucket)에도 있어야 하는데(내 티켓이 어느 구간인지 알아야 하므로),
+      SQL에 또 적어두면 두 곳이 되고 한쪽만 고치면 조용히 틀린 추천가가 나감.
+
+      잔여시간은 "거래 시점에 얼마나 남아 있었나"임 — expires_at - paid_at.
+      now 기준으로 재면 과거 거래는 죄다 이미 만료라 전부 D0으로 몰려서 통계가 무너짐.
+
+      original_price > 0 조건은 0으로 나누는 걸 막는 방어. 검증에서 걸러지지만
+      집계 쿼리가 데이터 한 줄 때문에 통째로 터지는 건 피하는 게 낫다.
+    -->
+    <select id="findRatioByCategoryAndBucket"
+            resultType="com.skala.planbmarket.mapper.RatioSampleRow">
+        SELECT COUNT(*)                                        AS sample_count,
+               AVG(CAST(e.amount AS DOUBLE) / t.original_price) AS avg_ratio
+        FROM escrow e
+                 JOIN listing l ON l.id = e.listing_id
+                 JOIN ticket t ON t.id = l.ticket_id
+        WHERE e.status = 'CONFIRMED'
+          AND e.confirmed_at &gt;= #{since}
+          AND t.category = #{category}
+          AND t.original_price &gt; 0
+          AND TIMESTAMPDIFF(HOUR, e.paid_at, t.expires_at) &gt;= #{minHours}
+          AND TIMESTAMPDIFF(HOUR, e.paid_at, t.expires_at) &lt; #{maxHours}
+    </select>
+
+    <!-- 1차 폴백 — 구간 조건만 뺀 같은 쿼리 -->
+    <select id="findRatioByCategory"
+            resultType="com.skala.planbmarket.mapper.RatioSampleRow">
+        SELECT COUNT(*)                                        AS sample_count,
+               AVG(CAST(e.amount AS DOUBLE) / t.original_price) AS avg_ratio
+        FROM escrow e
+                 JOIN listing l ON l.id = e.listing_id
+                 JOIN ticket t ON t.id = l.ticket_id
+        WHERE e.status = 'CONFIRMED'
+          AND e.confirmed_at &gt;= #{since}
+          AND t.category = #{category}
+          AND t.original_price &gt; 0
+    </select>
+
+    <!--
+      카테고리별 거래 현황.
+
+      티켓을 기준으로 왼쪽 조인함. 판매 등록도 거래도 없는 티켓(그냥 보유 중)까지 세야
+      "이 카테고리에 몇 개가 있고 그중 몇 개가 팔리고 몇 개가 썩었나"가 나옴.
+      조인 조건에 상태를 걸어둔 건, WHERE로 빼면 LEFT JOIN이 사실상 INNER JOIN이 돼서
+      아직 결말이 안 난 티켓이 통째로 사라지기 때문.
+
+      한 티켓에 판매 등록이 여러 번 붙을 수 있지만(철회 후 재등록) COMPLETED는 많아야
+      하나라 행이 불어나지 않음. 티켓은 한 번만 양도되므로.
+
+      실효율은 여기서 안 냄 — 분모를 무엇으로 볼 것인가가 정책이라 서비스에 둠.
+    -->
+    <select id="findCategoryStats"
+            resultType="com.skala.planbmarket.mapper.CategoryStatRow">
+        SELECT t.category                                                          AS category,
+               COUNT(*)                                                            AS ticket_count,
+               SUM(CASE WHEN t.status = 'TRANSFERRED' THEN 1 ELSE 0 END)           AS traded_count,
+               SUM(CASE WHEN t.status = 'EXPIRED' THEN 1 ELSE 0 END)               AS expired_count,
+               COALESCE(SUM(CASE WHEN e.id IS NOT NULL THEN e.amount ELSE 0 END), 0)       AS traded_amount,
+               COALESCE(SUM(CASE WHEN t.status = 'EXPIRED' THEN t.original_price ELSE 0 END), 0) AS lost_amount,
+               AVG(CASE
+                       WHEN e.id IS NOT NULL AND t.original_price &gt; 0
+                           THEN CAST(e.amount AS DOUBLE) / t.original_price
+                   END)                                                            AS avg_ratio
+        FROM ticket t
+                 LEFT JOIN listing l ON l.ticket_id = t.id AND l.status = 'COMPLETED'
+                 LEFT JOIN escrow e ON e.listing_id = l.id AND e.status = 'CONFIRMED'
+        GROUP BY t.category
+        ORDER BY t.category
+    </select>
+
+    <!--
+      일별 실효 손실.
+
+      날짜 키를 expires_at으로 잡음. 티켓에 "실효 처리된 시각" 컬럼이 따로 없기도 하지만,
+      의미상으로도 이쪽이 맞음 — 스케줄러가 1분 늦게 돌았다고 손실이 다음 날로 넘어가면
+      집계가 스케줄러 지연에 흔들림. 소멸한 시각은 만료 시각이지 처리된 시각이 아님.
+
+      손실을 정가와 시장가 두 갈래로 냄. 판매 등록조차 안 하고 썩힌 티켓은 시장가가 0이라,
+      두 숫자의 차이가 "시장에 나오지도 못한 손실"을 드러냄.
+    -->
+    <select id="findExpiryLoss"
+            resultType="com.skala.planbmarket.mapper.ExpiryLossRow">
+        SELECT CAST(t.expires_at AS DATE)          AS loss_date,
+               COUNT(*)                            AS expired_count,
+               COUNT(l.id)                         AS listed_count,
+               COALESCE(SUM(t.original_price), 0)  AS original_loss,
+               COALESCE(SUM(l.asking_price), 0)    AS market_loss
+        FROM ticket t
+                 LEFT JOIN listing l ON l.ticket_id = t.id AND l.status = 'EXPIRED'
+        WHERE t.status = 'EXPIRED'
+          AND t.expires_at &gt;= #{since}
+        GROUP BY CAST(t.expires_at AS DATE)
+        ORDER BY loss_date
+    </select>
+
+</mapper>

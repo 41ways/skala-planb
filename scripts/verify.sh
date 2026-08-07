@@ -204,8 +204,19 @@ sql "UPDATE deposit SET payment_deadline = DATEADD('MINUTE',-1,CURRENT_TIMESTAMP
 info "예약 $DID 의 제한시간을 1분 전으로 되돌림"
 
 # 스케줄러가 아직 안 돌았어도 결제는 막혀야 한다.
-# 1분 주기 사이로 결제가 새어나가지 않게 pay()가 시한을 한 번 더 본다
-assert_eq "시한 지난 뒤 결제 차단" 400 "$(status user01 POST /api/listings/7/pay)"
+# 1분 주기 사이로 결제가 새어나가지 않게 pay()가 시한을 한 번 더 본다.
+#
+# 다만 여기는 1분 주기 스케줄러와 경합한다. 시한을 되돌린 직후 스케줄러가 먼저 돌면
+# 예약이 이미 몰수돼 사라져서 404가 정답이 된다. 400을 박아두면 앱은 정상인데
+# 실행 시점에 따라 검증만 깨진다 — 둘 다 "결제가 통과되지 않는다"로 맞는 결과다
+PAYCODE=$(status user01 POST /api/listings/7/pay)
+if [ "$PAYCODE" = "400" ]; then
+  ok "시한 지난 뒤 결제 차단 = 400 (pay()가 직접 막음)"
+elif [ "$PAYCODE" = "404" ] && [ "$(sql_value "SELECT status FROM deposit WHERE id=$DID")" = "FORFEITED" ]; then
+  ok "시한 지난 뒤 결제 차단 = 404 (스케줄러가 먼저 몰수해 예약이 사라짐)"
+else
+  no "시한 지난 뒤 결제 차단: 400 또는 404(몰수 완료)를 기대, 실제 $PAYCODE"
+fi
 
 info "스케줄러 대기 (최대 70초)"
 for _ in $(seq 1 70); do
@@ -250,7 +261,12 @@ assert_eq "만료 티켓 16 실효" EXPIRED "$(sql_value "SELECT status FROM tic
 assert_eq "만료 티켓 17 실효" EXPIRED "$(sql_value "SELECT status FROM ticket WHERE id=17")"
 assert_eq "만료 티켓 18 실효" EXPIRED "$(sql_value "SELECT status FROM ticket WHERE id=18")"
 assert_eq "판매 건도 실효" EXPIRED "$(sql_value "SELECT status FROM listing WHERE id=16")"
-assert_eq "실효 알림 발송" 3 "$(sql_value "SELECT COUNT(*) FROM notification WHERE type='TICKET_EXPIRED'")"
+# 건수를 3으로 박아두면 안 된다. 티켓 1이 앱 시작 2분 뒤 만료라, 앞 단계에서 스케줄러를
+# 기다리는 사이에 같이 실효되면 4건이 된다 — 앱은 정상인데 검증만 깨지는 자리였다.
+# "실효된 티켓마다 알림이 나갔는가"가 확인하려던 것이므로 실제 실효 건수와 대조한다
+assert_eq "실효 알림 = 실효 티켓 수" \
+  "$(sql_value "SELECT COUNT(*) FROM ticket WHERE status='EXPIRED'")" \
+  "$(sql_value "SELECT COUNT(*) FROM notification WHERE type='TICKET_EXPIRED'")"
 check_integrity "만료 실효 후"
 shot "18_만료실효 / 16_스케줄러로그 — 콘솔의 '만료 티켓 N건 실효 처리'"
 
@@ -272,9 +288,15 @@ assert_eq "예약 없이 결제" 404 "$(status user01 POST /api/listings/9/pay)"
 assert_eq "남의 원장 조회" 403 "$(status user02 GET /api/members/user01/ledger)"
 # 본문을 제대로 채워 보낸다. 빈 본문이면 세션 검사보다 Bean Validation이 먼저 걸려서
 # 401이 아니라 400이 나옴 — 인증이 안 걸린 게 아니라 검증 순서 때문
+#
+# 제목이 영문인 이유: Windows Git Bash에서는 MSYS2가 네이티브 curl.exe로 넘어가는 인자를
+# UTF-8 → ANSI 코드페이지(한국어 환경이면 cp949)로 바꿔버린다. 그러면 서버에 깨진 바이트가
+# 도착해서 Jackson이 400을 내고, 인증 검증인 이 항목이 엉뚱한 이유로 실패한다.
+# 파일(@file)로 넘기면 변환을 피할 수 있지만, 이 검증은 인증을 보는 것이라
+# 본문에 한글을 쓸 이유가 없어서 영문으로 바꿨다. (앱은 한글 본문을 정상 처리함)
 assert_eq "비로그인 티켓 등록" 401 "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/tickets" \
       -H 'Content-Type: application/json' \
-      -d '{"category":"MOVIE","title":"비로그인 테스트","originalPrice":10000,"quantity":1,"eventAt":"2027-01-01T19:00:00"}')"
+      -d '{"category":"MOVIE","title":"anonymous test","originalPrice":10000,"quantity":1,"eventAt":"2027-01-01T19:00:00"}')"
 assert_eq "없는 티켓 조회" 404 "$(status user01 GET /api/tickets/99999)"
 
 VAL=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/members" \
@@ -287,7 +309,91 @@ shot "04_validation_400 / 05_404 — Swagger에서"
 assert_eq "실효된 판매 건 예약" 409 "$(status user01 POST /api/listings/18/reserve)"
 
 # ══════════════════════════════════════════════════════════════
-step "7. 최종 정합성"
+step "7. 통계 (MyBatis) — 가격 추천"
+# ══════════════════════════════════════════════════════════════
+# 시드의 과거 거래 15건이 (카테고리 × 잔여시간 구간) 조합마다 1건씩 깔려 있다.
+# 조합마다 표본이 1건뿐이라 폴백이 "혹시 몰라서" 넣은 코드가 아니라 정상 경로가 된다.
+suggest() { curl -s "$BASE/api/analysis/price-suggestion?ticketId=$1" | pick "$2"; }
+
+# 티켓 3 = 영화, 만료 6시간 뒤(D0). 같은 조합의 표본이 있어 1단계에서 잡힘
+assert_eq "가격추천 구간 판정" D0 "$(suggest 3 "d['bucket']")"
+assert_eq "가격추천 1단계 (카테고리+구간)" CATEGORY_BUCKET "$(suggest 3 "d['basis']")"
+assert_eq "가격추천 표본 수 노출" 1 "$(suggest 3 "d['sampleCount']")"
+# 0.58 × 28,000 — 시드의 D0 영화 거래가율이 그대로 반영돼야 한다
+assert_eq "추천가 산출" 16240 "$(suggest 3 "d['suggestedPrice']")"
+
+# 티켓 9 = 기차, 만료 4일 뒤(D3). 기차 표본은 D1에만 있어 1단계가 빈다
+assert_eq "폴백 1단계 진입 (구간 표본 0건)" CATEGORY "$(suggest 9 "d['basis']")"
+assert_eq "폴백 1단계도 표본은 있음" 1 "$(suggest 9 "d['sampleCount']")"
+
+# 2단계 폴백은 시드로는 안 걸린다 — 8개 카테고리 전부 표본이 하나씩은 있어서.
+# 기프티콘 표본 한 건을 30일 창 밖으로 밀어내 일부러 표본 0건을 만든다
+sql "UPDATE escrow SET confirmed_at = DATEADD('DAY',-60,CURRENT_TIMESTAMP) WHERE id=15" > /dev/null
+assert_eq "폴백 2단계 진입 (표본 전무)" DEFAULT "$(suggest 19 "d['basis']")"
+assert_eq "표본 0건 표시" 0 "$(suggest 19 "d['sampleCount']")"
+assert_eq "기본값 = 정가의 70%" 7000 "$(suggest 19 "d['suggestedPrice']")"
+
+assert_eq "없는 티켓" 404 "$(status user01 GET /api/analysis/price-suggestion?ticketId=99999)"
+shot "19_가격추천 — 티켓 3(1단계) / 티켓 9(폴백) / 티켓 19(기본값) 세 응답을 나란히"
+
+# ══════════════════════════════════════════════════════════════
+step "7-2. 통계 — 카테고리별 현황 · 일별 실효 손실"
+# ══════════════════════════════════════════════════════════════
+# API가 낸 집계를 SQL로 따로 세어 맞춰본다. 같은 답이 두 경로에서 나와야 한다
+CAT=$(curl -s "$BASE/api/analysis/category-summary")
+assert_eq "카테고리 8줄 (표본 없는 것도 0으로)" 8 "$(echo "$CAT" | pick "len(d['categories'])")"
+assert_eq "실효 건수 = SQL 집계" \
+  "$(sql_value "SELECT COUNT(*) FROM ticket WHERE status='EXPIRED'")" \
+  "$(echo "$CAT" | pick "d['totals']['expiredCount']")"
+assert_eq "양도 건수 = SQL 집계" \
+  "$(sql_value "SELECT COUNT(*) FROM ticket WHERE status='TRANSFERRED'")" \
+  "$(echo "$CAT" | pick "d['totals']['tradedCount']")"
+assert_eq "실효 손실액 = SQL 집계" \
+  "$(sql_value "SELECT SUM(original_price) FROM ticket WHERE status='EXPIRED'")" \
+  "$(echo "$CAT" | pick "d['totals']['lostAmount']")"
+shot "20_카테고리현황 — 실효율 칸을 같이 보이게"
+
+LOSS=$(curl -s "$BASE/api/analysis/expiry-loss?days=7")
+assert_eq "일별 손실 건수 = 카테고리 현황과 일치" \
+  "$(echo "$CAT" | pick "d['totals']['expiredCount']")" \
+  "$(echo "$LOSS" | pick "d['totals']['expiredCount']")"
+assert_eq "일별 손실 정가 = 카테고리 현황과 일치" \
+  "$(echo "$CAT" | pick "d['totals']['lostAmount']")" \
+  "$(echo "$LOSS" | pick "d['totals']['originalLoss']")"
+assert_eq "날짜별로 갈렸는지 (실효일이 서로 다름)" \
+  "$(sql_value "SELECT COUNT(DISTINCT CAST(expires_at AS DATE)) FROM ticket WHERE status='EXPIRED'")" \
+  "$(echo "$LOSS" | pick "len(d['daily'])")"
+# 시장가는 판매 등록된 건만 잡히므로 정가 이하여야 한다(희망가가 정가보다 쌈)
+assert_eq "시장가 손실 < 정가 손실" true \
+  "$(echo "$LOSS" | pick "str(d['totals']['marketLoss'] < d['totals']['originalLoss']).lower()")"
+assert_eq "days 하한" 400 "$(status user01 GET /api/analysis/expiry-loss?days=0)"
+assert_eq "days 상한" 400 "$(status user01 GET /api/analysis/expiry-loss?days=91)"
+shot "21_실효손실 — days=7 응답 전체"
+
+# ══════════════════════════════════════════════════════════════
+step "7-3. 거래 요약 (JPA) — MyBatis와의 경계 사례"
+# ══════════════════════════════════════════════════════════════
+# 같은 '통계'인데 이건 JPA로 만들었다. 단일 회원 기준 건수·합계라 여러 행을
+# 구간으로 접을 일이 없어서. 그 경계 판단이 보고서 5-7절 재료다
+SUM1=$(curl -s "$BASE/api/members/user01/summary")
+assert_eq "판매 성사 = SQL 집계" \
+  "$(sql_value "SELECT COUNT(*) FROM listing WHERE seller_id='user01' AND status='COMPLETED'")" \
+  "$(echo "$SUM1" | pick "d['completedSales']")"
+assert_eq "구매 확정 = SQL 집계" \
+  "$(sql_value "SELECT COUNT(*) FROM escrow WHERE buyer_id='user01' AND status='CONFIRMED'")" \
+  "$(echo "$SUM1" | pick "d['completedPurchases']")"
+assert_eq "구매 총액 = SQL 집계" \
+  "$(sql_value "SELECT SUM(amount) FROM escrow WHERE buyer_id='user01' AND status='CONFIRMED'")" \
+  "$(echo "$SUM1" | pick "d['totalPurchased']")"
+# 정산 수령액은 원장에서만 나온다. 에스크로 금액에서 세면 수수료 뗀 실수령이 아니라 거래액이 나옴
+assert_eq "정산 수령 = 원장 집계" \
+  "$(sql_value "SELECT SUM(amount) FROM ledger WHERE account_id='user01' AND reason='SELLER_SETTLE' AND entry_type='CREDIT'")" \
+  "$(echo "$SUM1" | pick "d['totalEarned']")"
+assert_eq "잔액 일치" "$(balance user01)" "$(echo "$SUM1" | pick "d['balance']")"
+assert_eq "없는 회원" 404 "$(status user01 GET /api/members/nobody/summary)"
+
+# ══════════════════════════════════════════════════════════════
+step "8. 최종 정합성"
 # ══════════════════════════════════════════════════════════════
 check_integrity "전 시나리오 종료 후"
 shot "⭐ 29_최종정합성검증 — 이게 보고서 6장의 결론"

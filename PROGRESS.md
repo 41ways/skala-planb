@@ -1,14 +1,15 @@
 # PlanB Market — 진행 상황
 
-> 6단계까지 완료. 다음은 7단계(MyBatis 통계 3종).
-> 마지막 검증: `scripts/verify.sh` **55/55 통과**
+> 7단계까지 완료. 다음은 8단계(동시성 락 + 검증).
+> 마지막 검증: `scripts/verify.sh` **81/81 통과**
 
 ---
 
 ## 0. 바로 시작하기
 
+저장소 루트가 곧 프로젝트다. 하위 디렉터리로 들어갈 필요 없음.
+
 ```bash
-cd planb
 ./gradlew bootRun
 ```
 
@@ -42,9 +43,11 @@ cd planb
 - `application.yml` — H2 인메모리, `ddl-auto: create`, `defer-datasource-initialization: true`
   (이게 없으면 `data.sql`이 테이블 생성 전에 실행돼 실패)
 
-**enum 11개** (`domain/enums/`)
+**enum 10개** (`domain/enums/`)
 `Category`(8종) · `ExpiryType` · `TicketStatus` · `ListingStatus` · `DepositStatus` ·
 `EscrowStatus` · `EntryType` · `LedgerReason` · `NotificationType` · `SystemAccount`
+
+> 7단계에서 `RemainingBucket`이 추가돼 지금은 11개.
 
 **엔티티 7개** (`domain/entity/`)
 `Member` · `Ticket` · `Listing` · `Deposit` · `Escrow` · `Ledger` · `Notification`
@@ -118,6 +121,37 @@ cd planb
 - `ExpiryService` — 만료 시점의 진행 단계별 처리, 만료 임박 경고, 자동 확정
 - `NotificationService` + 알림 API 4종
 - `config/SchedulerConfig` — `@EnableScheduling`
+
+### 7단계 — MyBatis 통계 3종 + 거래 요약
+
+**MyBatis** (`mapper/`, `resources/mapper/AnalysisMapper.xml`)
+- `AnalysisMapper` + XML — 쿼리 4개 (가격추천 2 = 본조회 + 폴백, 카테고리 현황, 실효 손실)
+- 행 타입 3개 — `RatioSampleRow` · `CategoryStatRow` · `ExpiryLossRow`
+  (응답 DTO와 분리. SQL은 "표본이 이렇더라"까지만 답하고 판단은 서비스가 함)
+- `config/MyBatisConfig` — `@MapperScan`. 스캔 경계를 한 곳에 적어 JPA와 안 섞이게
+
+**enum 1개** — `RemainingBucket` (D0/D1/D3/D7, 경계와 라벨을 필드로 보유)
+
+**API 4종**
+
+| Method | URI | 도구 |
+|---|---|---|
+| GET | `/api/analysis/price-suggestion?ticketId=` | MyBatis |
+| GET | `/api/analysis/category-summary` | MyBatis |
+| GET | `/api/analysis/expiry-loss?days=7` | MyBatis |
+| GET | `/api/members/{id}/summary` | **JPA** — 경계 사례 |
+
+넷 다 공개 조회. 가격 추천은 판매 등록 *전에* 봐야 쓸모가 있어서 로그인을 요구하면 자리를 잃음.
+거래 요약이 공개인 건 회원 상세(`GET /api/members/{id}`)가 이미 잔액을 공개하고 있어서 —
+여기만 막으면 정책이 어긋남. **잔액을 공개하는 것 자체는 실서비스라면 다시 볼 자리**라
+보고서 7장(한계)에 적을 것.
+
+눈여겨볼 곳:
+- **구간 경계가 `RemainingBucket` 한 곳에만 있음.** SQL엔 `minHours`/`maxHours`를 파라미터로
+  넘김. `CASE WHEN`을 XML에 박으면 자바에도 같은 경계가 또 있어야 하고, 어긋나도
+  에러가 안 나고 조용히 틀린 추천가가 나감 (`NOTES.md` 12-2절)
+- **폴백 3단계** — 카테고리+구간 → 카테고리 → 정가 70%. 응답의 `basis`로 어느 단계인지 노출
+- `members/{id}/summary`를 JPA로 남긴 이유 → `NOTES.md` 12절. **보고서 5-7절 재료**
 
 ---
 
@@ -215,11 +249,19 @@ OPEN ──(예약)──> RESERVED ──(결제)──> IN_ESCROW ──(확�
 ## 5. 알려진 이슈 · 미완성
 
 ### 미구현 (예정)
-- **MyBatis 매퍼 없음** — 의존성만 붙어 있고 `mapper/*.xml`이 비어 있어서
-  앱 시작 시 `No MyBatis mapper was found` 경고가 뜸. **정상임.** 7단계에서 채움
 - **비관적 락 없음** — 8단계 예정. 지금은 동시에 같은 판매 건을 예약하면 중복이 생길 수 있음
 - **AOP·Actuator 커스텀 없음** — 9단계 예정
 - **대시보드 없음** — 9단계 예정
+- **`GET /api/admin/dashboard-summary` 없음** — SPEC 4-8에 있지만 대시보드 재료라 9단계에서
+  같이 만드는 게 맞음. 지금 만들면 화면이 뭘 필요로 하는지 모른 채 모양을 정하게 됨
+
+### 정리 안 한 것 (7단계 범위 밖)
+- **`Ticket.sourceTicketId`가 죽은 필드** — 엔티티와 `TicketResponse`에만 있고 읽고 쓰는
+  코드가 0건. 1매 분할 발행의 잔재라 5단계 재설계 때 같이 빠졌어야 함. 시드도 전부 NULL
+- **`Escrow.quantity`** — 항상 `ticket.quantity` 복사본. 전량 구매만 남아서 독립적 의미가
+  없어짐. 다만 통계에는 무해 — `amount`와 `originalPrice`가 둘 다 전체 기준이라 비율이 맞음
+- **`TicketStatus` javadoc이 아직 1매 대기를 설명함** — "2매짜리를 두 명이 나눠 산 경우"
+- 셋 다 동작에 영향 없음. 캡처를 다시 찍을 일이 없는 10단계에 몰아서 정리할 것
 
 ### 알아둘 점
 - **`Paging`의 offset 해석** — `offset / count`로 페이지 번호를 만들기 때문에 offset이
@@ -232,6 +274,24 @@ OPEN ──(예약)──> RESERVED ──(결제)──> IN_ESCROW ──(확�
   방어적으로 구현해 둔 분기임
 - **검증 스크립트가 H2 콘솔로 시각을 조작함** — 10분·제한시간을 실시간으로 기다릴 수
   없어서. 테스트 전용 API를 앱에 뚫지 않으려고 택한 우회로
+- **가격 추천 2단계 폴백(`DEFAULT`)은 시드로 안 걸림** — 8개 카테고리 전부 표본이
+  하나씩은 있어서. 검증 스크립트가 기프티콘 표본 한 건을 30일 창 밖으로 밀어내
+  일부러 만들어 확인함 (위 H2 우회로를 같은 이유로 재사용)
+- **Windows Git Bash에서 요청 본문에 한글을 쓰면 깨짐** — MSYS2가 네이티브 `curl.exe`로
+  넘기는 인자를 UTF-8 → cp949로 바꿔버려서 서버가 400을 냄. **앱 문제가 아님**
+  (파일 `@body.json`으로 넘기면 정상). 검증 스크립트의 해당 본문은 영문으로 바꿔뒀음
+- **시각에 의존하는 단정을 숫자로 박지 말 것** — 7단계에서 세 군데가 이 이유로 깨졌음.
+  전부 앱은 정상이고 검증만 틀린 경우라 스크립트 쪽을 고쳤다.
+
+  | 자리 | 왜 깨졌나 | 어떻게 고쳤나 |
+  |---|---|---|
+  | 실효 알림 건수 `3` | 티켓 1이 앱 시작 2분 뒤 만료라, 앞 단계에서 스케줄러를 기다리는 사이 같이 실효되면 4건 | 실제 `EXPIRED` 티켓 수와 대조 |
+  | 시한 초과 결제 `400` | 1분 주기 스케줄러가 먼저 돌면 예약이 이미 몰수돼 사라져서 404가 정답 | 400 또는 404(몰수 완료) 둘 다 통과, 어느 쪽인지 출력 |
+  | 카테고리·손실 집계 | 스크립트가 앞 단계에서 새 거래를 만들어 시드 숫자와 달라짐 | 전부 SQL 집계와 교차 대조 |
+
+  > **스케줄러가 도는 앱에서는 "지금 몇 건인가"가 고정값이 아니다.** 기댓값을 손으로
+  > 적는 대신 다른 경로(SQL)로 같은 답을 구해 맞춰보는 게 맞다. 그러면 검증이
+  > 깨지기 어려워질 뿐 아니라, **API와 SQL 두 경로가 같은 답을 내는지**까지 보게 된다.
 
 ### 캡처 진행 상황
 `docs/captures/`에 일부 있으나 **5단계 재설계로 상당수가 무효화됨**
@@ -243,65 +303,74 @@ OPEN ──(예약)──> RESERVED ──(결제)──> IN_ESCROW ──(확�
 
 ---
 
-## 6. 7단계에서 할 일 — MyBatis 통계 3종
+## 6. 7단계에서 확정한 것 (참고)
 
-### 만들 것
-- `mapper/AnalysisMapper.java` (인터페이스) + `src/main/resources/mapper/AnalysisMapper.xml`
-- `service/AnalysisService.java`, `controller/AnalysisController.java`
-- `config/MyBatisConfig.java` (필요 시. `application.yml`에 `mapper-locations`는 이미 설정돼 있음)
-
-### API 3종
-
-| Method | URI | 설명 |
+| 항목 | 결정 | 근거 |
 |---|---|---|
-| GET | `/api/analysis/price-suggestion?category=&ticketId=` | 가격 추천 |
-| GET | `/api/analysis/category-summary` | 카테고리별 거래 현황 |
-| GET | `/api/analysis/expiry-loss?days=7` | 일별 실효 손실 |
+| bucket 경계 | `min <= h < max` — 아래 포함, 위 배제 | SPEC의 `D1(1~3일)`/`D3(3~7일)`이 겹쳐 있었음 |
+| bucket 측정 | 표본 = `expiresAt − paidAt`, 내 티켓 = `expiresAt − now` | `now` 기준으로 재면 과거 거래가 전부 D0으로 몰림 |
+| 최근 30일 | `confirmed_at` 기준 | 조건이 `CONFIRMED`라 `IS NOT NULL`이 필터를 겸함 |
+| 실효 손실액 | 정가·시장가 **둘 다** | 다른 질문에 답함. 차이가 "미등록 소멸"을 드러냄 |
+| 실효 날짜 키 | `expiresAt`의 날짜 | 처리 시각을 쓰면 스케줄러 지연에 집계가 흔들림 |
+| 실효율 분모 | 양도완료 + 실효 (판매 중 제외) | 전체로 나누면 새 티켓 등록만으로 지표가 좋아짐 |
+| 추천가 반올림 | 원 단위 `Math.round` | 100원 단위 절삭 같은 규칙은 근거 없이 만들지 않음 |
+| 인증 | 넷 다 공개 | 개인정보가 아님. 가격 추천은 등록 *전에* 봐야 쓸모가 있음 |
 
-### 가격 추천 규칙 (SPEC 2-6)
+시드는 손대지 않았음. 과거 거래 15건이 (카테고리 × bucket) 조합마다 1건씩 깔려 있고
+`D0 0.58~0.62 → D7 0.86~0.91` 분포라 **만료가 가까울수록 싸게 팔린다**는 패턴이 그대로 나옴.
+조합마다 표본이 1건뿐이라 **1단계 폴백이 정상 경로로 실제로 탐** (기차 D3, 항공 D7 등).
 
-```
-잔여시간 구간(bucket): D0(24h 미만) / D1(1~3일) / D3(3~7일) / D7(7일 이상)
-
-추천가 = 같은 카테고리 + 같은 bucket + 최근 30일 CONFIRMED 거래의
-        AVG(amount / originalPrice) × 내 티켓 originalPrice
-
-표본 0건 → 카테고리 전체 평균으로 폴백
-그것도 0건 → 정가의 70% 기본값
-```
-
-응답에 `sampleCount`를 반드시 포함할 것.
-
-### 시드가 이미 준비돼 있음
-과거 거래 15건이 (카테고리 × bucket) 조합마다 1건씩 깔려 있고, 비율이 이렇게 분포함:
-
-```
-D0  0.58 ~ 0.62   급처분
-D1  0.70 ~ 0.74
-D3  0.80 ~ 0.84
-D7  0.86 ~ 0.91   여유 있을 때
-```
-
-**만료가 가까울수록 싸게 팔린다**는 패턴이라 추천가가 의미를 가짐.
-그리고 조합마다 표본이 1건뿐이라 **폴백 로직이 반드시 타게 돼 있음** — 표본 0건 처리를
-실제로 검증할 수 있는 구조.
-
-### 먼저 정해야 할 것
-- **bucket 경계 표기** — SPEC의 `D1(1~3일)` / `D3(3~7일)`이 경계에서 겹침. 어느 쪽을
-  포함할지 정할 것 (`24 <= h < 72` 같은 식으로)
-- **`Escrow.amount` 단위** — 지금은 전량 구매만 있어서 `amount`가 곧 전체 금액이고
-  `originalPrice`도 전체 기준이라 비율이 그대로 맞음. 1매 대기를 뺐기 때문에
-  SPEC에서 걱정하던 단위 불일치 문제는 **사라졌음**
-
-### 마친 뒤
-```bash
-./scripts/verify.sh
-```
-55개가 그대로 통과해야 함. 통계 API 검증도 스크립트에 추가할 것.
+`price-suggestion`은 `category` 파라미터를 안 받음 — 티켓에서 그대로 나오는 값이라
+따로 받으면 "둘이 어긋나면 어느 쪽을 믿나"라는 분기가 공짜로 생김.
 
 ---
 
-## 7. 참고 문서
+## 7. 8단계에서 할 일 — 동시성 락
+
+### 만들 것
+- `ListingRepository` / `MemberRepository`에 비관적 락 조회 메서드
+
+```java
+@Lock(LockModeType.PESSIMISTIC_WRITE)
+@Query("SELECT l FROM Listing l WHERE l.id = :id")
+Optional<Listing> findByIdForUpdate(@Param("id") Long id);
+```
+
+- 락 획득 순서 고정 — **Listing → 구매자 → 판매자**. 순서가 뒤바뀌면 데드락
+- `POST /api/admin/simulate-concurrent` — `useLock` 플래그로 on/off
+
+### 경합 지점
+지금 락이 없어서 실제로 깨지는 자리 (SPEC 5-1):
+
+| 지점 | 문제 |
+|---|---|
+| 예약 (`POST /listings/{id}/reserve`) | 동시 예약 → 한 판매 건에 예약금이 2건 잡힘 |
+| 본결제 (`POST /listings/{id}/pay`) | 동시 결제 → 에스크로 중복 생성 |
+| 잔액 차감 | 동시 결제 → 잔액이 음수가 되거나 덮어써짐 |
+
+5단계 재설계로 `purchase`가 `reserve` + `pay` 둘로 갈렸음. **SPEC 5-1이 말하는 "2매 단독
+구매" 경합은 지금 구조에선 `reserve`가 첫 관문**이고, 여기만 막으면 뒤는 상태로 걸러짐.
+
+### 미리 정해둘 것
+- **`simulate-concurrent`의 대상을 reserve로 할지 pay로 할지** — reserve가 자연스러움.
+  경합이 실제로 일어나는 첫 지점이고 결과가 `ALREADY_RESERVED` 하나로 깔끔하게 나옴
+- **락 없음 경로를 어떻게 만들지** — 서비스 메서드를 두 벌 두면 코드가 갈라짐.
+  플래그로 조회 메서드만 바꿔 끼우는 쪽이 나음
+- **시스템 계정 `balanceAfter`의 동시성** — 아래 "알려진 이슈"에 적어둔, 8단계에서
+  짚기로 한 항목
+
+### 마친 뒤
+
+```bash
+./scripts/verify.sh
+```
+
+81개가 그대로 통과해야 함. 동시성 검증도 스크립트에 추가할 것.
+그리고 **8단계 끝이 1차 캡처 지점** — 📸 표시가 뜨는 자리를 한 번에 찍을 것.
+
+---
+
+## 8. 참고 문서
 
 | 파일 | 내용 |
 |---|---|

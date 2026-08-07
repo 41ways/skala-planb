@@ -52,4 +52,7 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
     @EntityGraph(attributePaths = {"ticket", "seller"})
     Optional<Listing> findFirstByTicketIdAndStatusInOrderByIdDesc(
             Long ticketId, Collection<ListingStatus> statuses);
+
+    /** 거래 요약용 — 판매자로서의 상태별 건수 */
+    long countBySellerIdAndStatusIn(String sellerId, Collection<ListingStatus> statuses);
 }

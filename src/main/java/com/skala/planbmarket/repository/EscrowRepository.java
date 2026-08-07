@@ -47,4 +47,19 @@ public interface EscrowRepository extends JpaRepository<Escrow, Long> {
     /** 정합성 검증용 — 보관 중인 돈의 합. ESCROW_POOL 잔액과 맞아야 함 */
     @Query("SELECT COALESCE(SUM(e.amount), 0) FROM Escrow e WHERE e.status = :status")
     long sumHeldAmount(@Param("status") EscrowStatus status);
+
+    /** 거래 요약용 — 구매자로서의 상태별 건수 */
+    long countByBuyerIdAndStatus(String buyerId, EscrowStatus status);
+
+    /**
+     * 거래 요약용 — 구매 확정 총액.
+     *
+     * 합계라 파생 쿼리메서드로는 안 되지만 여전히 JPA임. 단일 회원 필터 + SUM 하나라
+     * 여러 행을 구간으로 나눠 접는 작업이 아니고, MyBatis로 옮길 이유가 없음.
+     */
+    @Query("""
+            SELECT COALESCE(SUM(e.amount), 0) FROM Escrow e
+            WHERE e.buyer.id = :buyerId AND e.status = :status
+            """)
+    long sumAmountByBuyer(@Param("buyerId") String buyerId, @Param("status") EscrowStatus status);
 }

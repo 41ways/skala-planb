@@ -42,4 +42,7 @@ public interface DepositRepository extends JpaRepository<Deposit, Long> {
     /** 정합성 검증용 — 홀드 중인 예약금 합. DEPOSIT_POOL 잔액과 맞아야 함 */
     @Query("SELECT COALESCE(SUM(d.amount), 0) FROM Deposit d WHERE d.status = :status")
     long sumHeldAmount(@Param("status") DepositStatus status);
+
+    /** 거래 요약용 — 회원의 상태별 예약금 건수 */
+    long countByMemberIdAndStatus(String memberId, DepositStatus status);
 }
