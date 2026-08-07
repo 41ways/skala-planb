@@ -77,8 +77,31 @@ public class EscrowService {
      */
     @Transactional
     public ReservationResponse reserve(Long listingId) {
-        String buyerId = sessionHandler.requireLoginMemberId();
-        Listing listing = findListing(listingId);
+        return reserve(listingId, sessionHandler.requireLoginMemberId(), true);
+    }
+
+    /**
+     * 예약 본체. 구매자를 밖에서 받고, 락을 걸지 말지도 밖에서 정한다.
+     *
+     * <p>인자가 둘 는 이유는 <b>동시성 시뮬레이터 때문</b>이다.
+     * <ul>
+     *   <li>{@code buyerId} — 시뮬레이터는 여러 스레드에서 부르는데, 세션은 요청 스코프라
+     *       그 스레드들에는 없다. 로그인 조회를 위에 남기고 여기선 ID만 받는다.</li>
+     *   <li>{@code useLock} — 락이 있고 없고를 <b>같은 코드로</b> 비교하기 위해서다.
+     *       메서드를 두 벌 두면 "락 말고 다른 게 달랐던 것 아니냐"는 반론에 답할 수 없다.
+     *       바뀌는 건 조회 메서드 두 줄뿐이고 나머지 경로는 완전히 같다.</li>
+     * </ul>
+     *
+     * <p>실제 API({@link #reserve(Long)})는 {@code useLock=true}로 고정이다.
+     * 끄는 건 시뮬레이터만 할 수 있고, 그것도 "락이 없으면 이렇게 깨진다"를
+     * 보여주려는 용도다.
+     *
+     * <p><b>락 획득 순서: Listing → 구매자.</b> 판매자는 예약 단계에서 안 건드린다.
+     * 확정 단계에서 판매자를 잡을 때도 이 순서 뒤에 오게 되어 있다.
+     */
+    @Transactional
+    public ReservationResponse reserve(Long listingId, String buyerId, boolean useLock) {
+        Listing listing = useLock ? findListingForUpdate(listingId) : findListing(listingId);
         Ticket ticket = listing.getTicket();
         LocalDateTime now = LocalDateTime.now();
 
@@ -93,8 +116,7 @@ public class EscrowService {
             throw new ResponseException(Error.TICKET_EXPIRED, "만료 시각 " + ticket.getExpiresAt());
         }
 
-        Member buyer = memberRepository.findById(buyerId)
-                .orElseThrow(() -> new ResponseException(Error.DATA_NOT_FOUND, "회원 ID " + buyerId));
+        Member buyer = findMember(buyerId, useLock);
 
         long depositAmount = TradePolicy.depositOf(listing.getAskingPrice());
         LocalDateTime deadline = TradePolicy.paymentDeadlineOf(now, ticket.getExpiresAt());
@@ -158,8 +180,12 @@ public class EscrowService {
     @Transactional
     public EscrowResponse pay(Long listingId) {
         String buyerId = sessionHandler.requireLoginMemberId();
+
+        // 예약을 찾기 전에 판매 건부터 잠근다. 예약 조회와 결제 사이에 스케줄러가
+        // 시한 초과로 몰수해버리거나 다른 요청이 끼어들 수 있어서.
+        // 순서는 예약과 같은 Listing → 구매자. 여기만 반대로 잡으면 데드락이 난다
+        Listing listing = findListingForUpdate(listingId);
         Deposit deposit = findActiveReservation(listingId);
-        Listing listing = deposit.getListing();
         Ticket ticket = listing.getTicket();
         LocalDateTime now = LocalDateTime.now();
 
@@ -180,7 +206,9 @@ public class EscrowService {
         long fromDeposit = deposit.getAmount();
         long fromBalance = total - fromDeposit;
 
-        Member buyer = deposit.getMember();
+        // 구매자 행도 잠근다. 다른 판매 건을 동시에 결제하면 같은 잔액을 두 트랜잭션이
+        // 읽고 각자 뺀 값을 써서, 나중 커밋이 앞의 차감을 덮어쓴다
+        Member buyer = findMember(buyerId, true);
         if (!buyer.canAfford(fromBalance)) {
             throw new ResponseException(Error.INSUFFICIENT_BALANCE,
                     "잔액 " + buyer.getBalance() + "원, 추가 필요 " + fromBalance + "원");
@@ -390,6 +418,32 @@ public class EscrowService {
         return sent;
     }
 
+    /**
+     * 판매 건에 걸린 예약을 전부 풀고 다시 열어줌. 동시성 시뮬레이터의 뒷정리용.
+     *
+     * 락 없이 돌리면 예약이 여러 건 생기는데, 그걸 그대로 두면 판매 건 하나에 HELD가
+     * 여럿이라 이후 조회가 전부 터진다(단건을 기대하는 자리라). 그러면 시연을
+     * <b>딱 한 번</b>밖에 못 한다 — 락 없음과 락 적용을 나란히 보여줘야 하는데
+     * 그 사이에 앱을 다시 띄워야 하는 셈.
+     *
+     * 전액 환불(RELEASED)로 되돌린다. 몰수할 이유가 없다 — 구매자는 정상적으로
+     * 요청했고, 여러 건이 생긴 건 우리 락이 없어서다. <b>귀책이 없으면 돈은
+     * 원래 자리로</b>라는 이 프로젝트의 규칙이 여기에도 그대로 적용된다.
+     */
+    @Transactional
+    public int releaseAllReservations(Long listingId, LocalDateTime now, String memo) {
+        List<Deposit> held = depositRepository.findAllByListingIdAndStatus(
+                listingId, DepositStatus.HELD);
+
+        for (Deposit deposit : held) {
+            depositService.release(deposit, now, memo);
+        }
+        listingRepository.findById(listingId)
+                .ifPresent(listing -> listing.changeStatus(ListingStatus.OPEN));
+
+        return held.size();
+    }
+
     /** 판매자 철회로 예약이 무산됐을 때. 귀책이 없으니 전액 환불하고 예약자에게 알림 */
     @Transactional
     public void releaseReservation(Listing listing, LocalDateTime now, String memo,
@@ -425,6 +479,24 @@ public class EscrowService {
     private Listing findListing(Long id) {
         return listingRepository.findWithDetailById(id)
                 .orElseThrow(() -> new ResponseException(Error.DATA_NOT_FOUND, "판매 ID " + id));
+    }
+
+    /**
+     * 락을 걸고 판매 건을 가져옴 (SELECT ... FOR UPDATE).
+     *
+     * 여기부터 트랜잭션이 끝날 때까지 이 행은 다른 트랜잭션이 못 건드림.
+     * 뒤따르는 요청들은 실패하는 게 아니라 <b>기다렸다가</b> 바뀐 상태를 보고
+     * ALREADY_RESERVED로 떨어진다 — 그게 락 적용/미적용의 눈에 보이는 차이다.
+     */
+    private Listing findListingForUpdate(Long id) {
+        return listingRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new ResponseException(Error.DATA_NOT_FOUND, "판매 ID " + id));
+    }
+
+    /** 락 여부만 갈리고 나머지는 같음. 시뮬레이터가 두 경로를 같은 코드로 비교할 수 있게 */
+    private Member findMember(String id, boolean useLock) {
+        return (useLock ? memberRepository.findByIdForUpdate(id) : memberRepository.findById(id))
+                .orElseThrow(() -> new ResponseException(Error.DATA_NOT_FOUND, "회원 ID " + id));
     }
 
     private Escrow findEscrow(Long escrowId) {

@@ -71,6 +71,30 @@ public class Member {
         return this.balance >= amount;
     }
 
+    /**
+     * 잔액을 원장 합계에 맞춰 되돌림. <b>동시성 시뮬레이터의 뒷정리 전용.</b>
+     *
+     * 평소에 이 메서드를 부를 일은 없어야 한다. 잔액을 바꾸는 통로는 LedgerService
+     * 하나뿐이라는 게 이 프로젝트의 규칙이고, 여기는 그 규칙을 우회하는 유일한 구멍이다.
+     *
+     * <p>그래도 둔 이유: 락 없이 돌린 시뮬레이션은 <b>잔액에 lost update를 남긴다.</b>
+     * 두 스레드가 같은 잔액을 읽고 각자 뺀 값을 써서 앞의 차감이 덮어써지는 것.
+     * 원장에는 두 줄 다 남으므로 이때부터 "잔액 != 원장 합"이 되고, 정합성 검증이
+     * 영구히 실패한다. 되돌릴 방법이 없으면 시연을 한 번밖에 못 한다.
+     *
+     * <p>원장을 고치는 게 아니라 <b>잔액을 원장에 맞추는</b> 방향인 게 중요하다.
+     * 원장이 사실이고 잔액은 빠르게 읽으려고 들고 있는 사본이다. 사본이 틀어졌으면
+     * 사본을 원본에 맞추는 게 맞지, 그 반대가 아니다. (원장은 append-only라 애초에
+     * 고칠 수도 없다 — setter도 없고 전 컬럼이 updatable=false다)
+     *
+     * @return 어긋나 있던 금액. 0이면 멀쩡했던 것
+     */
+    public long reconcileBalance(long fromLedger) {
+        long difference = this.balance - fromLedger;
+        this.balance = fromLedger;
+        return difference;
+    }
+
     public void changePassword(String password) {
         this.password = password;
     }

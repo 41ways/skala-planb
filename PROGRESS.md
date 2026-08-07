@@ -1,7 +1,7 @@
 # PlanB Market — 진행 상황
 
-> 7단계까지 완료. 다음은 8단계(동시성 락 + 검증).
-> 마지막 검증: `scripts/verify.sh` **81/81 통과**
+> 8단계까지 완료. 다음은 9단계(Actuator + AOP + 대시보드).
+> 마지막 검증: `scripts/verify.sh` **97/97 통과**
 
 ---
 
@@ -153,6 +153,39 @@
 - **폴백 3단계** — 카테고리+구간 → 카테고리 → 정가 70%. 응답의 `basis`로 어느 단계인지 노출
 - `members/{id}/summary`를 JPA로 남긴 이유 → `NOTES.md` 12절. **보고서 5-7절 재료**
 
+### 8단계 — 동시성 락
+
+**비관적 락 2곳** (`SELECT ... FOR UPDATE`)
+- `ListingRepository.findByIdForUpdate` — 경합이 실제로 일어나는 첫 관문
+- `MemberRepository.findByIdForUpdate` — 잔액 lost update 방지
+- **락 획득 순서 고정: Listing → 구매자 → 판매자.** `reserve`·`pay` 둘 다 이 순서
+
+**동시성 시뮬레이터** — `POST /api/admin/simulate-concurrent`
+- N개 스레드가 같은 판매 건에 동시에 예약. `CountDownLatch`로 출발을 맞춰 경합을 만듦
+- `EscrowService.reserve(listingId, buyerId, useLock)` — 인자 둘이 는 건 시뮬레이터 때문.
+  세션은 요청 스코프라 스레드에 없고, **락 유무만 갈리고 나머지 경로는 완전히 같아야**
+  "락 말고 다른 게 달랐던 것 아니냐"에 답할 수 있음
+- `LedgerService.reconcileBalances()` — 뒷정리. 잔액을 원장 합계에 맞춰 되돌림
+
+**실측 결과** (판매 4번, 20스레드)
+
+| | 성공 | 예약 생성 | dataIntegrity | balanceIntegrity | **ledgerBalanced** |
+|---|---|---|---|---|---|
+| 락 없음 | 7~9 | 7~9건 | ❌ | ❌ (4명 어긋남) | **✅** |
+| 락 적용 | 1 | 1건 | ✅ | ✅ | ✅ |
+
+⭐ **락 없음인데 원장 차대는 맞는다**는 게 이 단계 최대 수확.
+홀드마다 원장 2줄이 제대로 남아서 돈은 한 푼도 안 샜는데, 티켓 하나가 9명에게 잠겼다.
+**정합성 검증이 못 잡는 종류의 버그가 있다** — `NOTES.md` 17절, 보고서 5-11절 재료.
+
+눈여겨볼 곳:
+- **`reconcileBalances()`가 `LedgerService`에 있는 이유** — 처음엔 `AdminService`에 뒀다가
+  같은 클래스 내부 호출이라 `@Transactional`이 안 걸려 "고쳤다는데 안 고쳐지는" 증상을 봄.
+  SPEC 7장이 경고한 AOP 프록시 한계에 그대로 걸린 것 (`NOTES.md` 13-6절)
+- **시뮬레이터가 뒷정리를 하는 이유** — 안 하면 lost update가 영구히 남아 정합성 검증이
+  계속 실패함. 락 없음/락 적용을 나란히 보여주려면 반복 실행이 돼야 함.
+  대신 무슨 일이 있었는지는 응답 `lostUpdates`에 남김
+
 ---
 
 ## 2. 5단계 재설계 — 1매 대기 제거
@@ -249,7 +282,6 @@ OPEN ──(예약)──> RESERVED ──(결제)──> IN_ESCROW ──(확�
 ## 5. 알려진 이슈 · 미완성
 
 ### 미구현 (예정)
-- **비관적 락 없음** — 8단계 예정. 지금은 동시에 같은 판매 건을 예약하면 중복이 생길 수 있음
 - **AOP·Actuator 커스텀 없음** — 9단계 예정
 - **대시보드 없음** — 9단계 예정
 - **`GET /api/admin/dashboard-summary` 없음** — SPEC 4-8에 있지만 대시보드 재료라 9단계에서
@@ -266,9 +298,17 @@ OPEN ──(예약)──> RESERVED ──(결제)──> IN_ESCROW ──(확�
 ### 알아둘 점
 - **`Paging`의 offset 해석** — `offset / count`로 페이지 번호를 만들기 때문에 offset이
   count의 배수가 아니면 그 값을 품는 페이지의 시작으로 내려감 (`Paging.java` 주석 참조)
-- **시스템 계정의 `balanceAfter`는 동시성에 취약** — 매번 원장을 합산해서 구하는데
-  락을 안 잡음. 정합성 검증은 `SUM`을 쓰므로 영향 없지만, 동시 이체 시 특정 줄의
-  `balanceAfter`가 어긋날 수 있음. 8단계에서 짚을 것
+- **시스템 계정의 `balanceAfter`는 동시성에 취약** — 8단계에서 실측으로 확인함.
+  락 없이 20스레드를 쏘면 `DEPOSIT_POOL` 원장 26줄 중 **6줄의 `balanceAfter`가 어긋났음.**
+  잠글 행이 없어서(회원과 달리 `Member` 행이 없음) 두 이체가 같은 합계를 읽고
+  각자 자기 금액을 더한 값을 씀.
+
+  **고치지 않기로 했음.** 고치려면 모든 이체를 직렬화해야 하는데 표시용 컬럼 하나
+  때문에 치르기엔 너무 큰 값임. 대신 아무것도 여기에 안 기대게 해뒀음 —
+  정합성 검증은 전부 `SUM`으로 구하고(`balanceOf`/`sumAmountByEntryType`),
+  `balanceAfter`를 읽는 곳은 원장 조회 응답 하나뿐(화면 표시용).
+  **누적 합계 자체는 언제나 맞고, 어긋나는 건 "그 줄 시점의 스냅샷"뿐임.**
+  회원 계정은 해당 없음 — 잔액 경로에 `Member` 행 비관적 락이 걸려 있음
 - **`EscrowStatus.VOIDED` 도달이 드묾** — 자동 확정이 만료보다 10분 먼저 일어나게
   잡아둬서, 앱이 꺼져 있던 동안 만료가 지난 경우 정도가 아니면 잘 안 걸림.
   방어적으로 구현해 둔 분기임
@@ -288,6 +328,11 @@ OPEN ──(예약)──> RESERVED ──(결제)──> IN_ESCROW ──(확�
   | 실효 알림 건수 `3` | 티켓 1이 앱 시작 2분 뒤 만료라, 앞 단계에서 스케줄러를 기다리는 사이 같이 실효되면 4건 | 실제 `EXPIRED` 티켓 수와 대조 |
   | 시한 초과 결제 `400` | 1분 주기 스케줄러가 먼저 돌면 예약이 이미 몰수돼 사라져서 404가 정답 | 400 또는 404(몰수 완료) 둘 다 통과, 어느 쪽인지 출력 |
   | 카테고리·손실 집계 | 스크립트가 앞 단계에서 새 거래를 만들어 시드 숫자와 달라짐 | 전부 SQL 집계와 교차 대조 |
+  | (8단계) "OPEN 아닌 판매 건" 테스트 | 티켓 1이 아직 만료 전이면 판매 1번이 여전히 OPEN | 시드에서 항상 COMPLETED인 판매 21번으로 교체 |
+
+  > 마지막 줄은 **이 교훈을 적어놓고 바로 다음 단계에서 또 밟은 것**이다.
+  > "만료됐을 테니 OPEN이 아니겠지"라고 가정한 게 화근. 시각에 의존하지 않는
+  > 대상(시드에서 상태가 고정된 행)을 고르는 게 답이었다.
 
   > **스케줄러가 도는 앱에서는 "지금 몇 건인가"가 고정값이 아니다.** 기댓값을 손으로
   > 적는 대신 다른 경로(SQL)로 같은 답을 구해 맞춰보는 게 맞다. 그러면 검증이
@@ -325,39 +370,68 @@ OPEN ──(예약)──> RESERVED ──(결제)──> IN_ESCROW ──(확�
 
 ---
 
-## 7. 8단계에서 할 일 — 동시성 락
+## 7. 8단계에서 확정한 것 (참고)
 
-### 만들 것
-- `ListingRepository` / `MemberRepository`에 비관적 락 조회 메서드
+| 항목 | 결정 | 근거 |
+|---|---|---|
+| 락 방식 | **비관적 락** | 마지막 1건 경합이라 낙관적 락은 재시도해도 어차피 실패 — 비용만 늚 |
+| 락 대상 | Listing, Member | SPEC 5-1의 세 경합 지점이 이 둘로 덮임 |
+| 락 순서 | **Listing → 구매자 → 판매자** | 데드락을 감지해서 푸는 대신 안 생기게 만듦 |
+| 시뮬레이터 대상 | `reserve` | 경합이 실제로 일어나는 첫 관문. 결과가 `ALREADY_RESERVED` 하나로 깔끔 |
+| 락 on/off 구현 | 조회 메서드만 바꿔 끼움 | 메서드를 두 벌 두면 "락 말고 다른 게 달랐다"는 반론에 못 답함 |
+| 뒷정리 | 예약 전액 환불 + 잔액 원장에 맞춤 | 안 하면 lost update가 영구히 남아 시연을 한 번밖에 못 함 |
+| 뒷정리 위치 | `LedgerService` | 잔액을 바꾸는 통로는 하나라는 규칙. AOP 프록시 제약과 답이 같았음 |
+| 시스템 계정 `balanceAfter` | **안 고침** | 표시용 컬럼 하나 때문에 전 이체를 직렬화할 수 없음. 검증은 전부 SUM 기반 |
 
-```java
-@Lock(LockModeType.PESSIMISTIC_WRITE)
-@Query("SELECT l FROM Listing l WHERE l.id = :id")
-Optional<Listing> findByIdForUpdate(@Param("id") Long id);
+시연 순서 (캡처용):
+
+```bash
+curl -X POST http://localhost:8080/api/admin/simulate-concurrent \
+  -H 'Content-Type: application/json' \
+  -d '{"listingId":4,"threadCount":20,"useLock":false}'
 ```
 
-- 락 획득 순서 고정 — **Listing → 구매자 → 판매자**. 순서가 뒤바뀌면 데드락
-- `POST /api/admin/simulate-concurrent` — `useLock` 플래그로 on/off
+```bash
+curl -X POST http://localhost:8080/api/admin/simulate-concurrent \
+  -H 'Content-Type: application/json' \
+  -d '{"listingId":4,"threadCount":20,"useLock":true}'
+```
 
-### 경합 지점
-지금 락이 없어서 실제로 깨지는 자리 (SPEC 5-1):
+두 응답을 나란히 놓는 게 PDF 하이라이트다. **락 없음 응답의 `ledgerBalanced: true`를
+같이 보일 것** — 정합성 검증이 못 잡는 버그라는 근거다.
+뒷정리가 붙어 있어서 몇 번이든 반복해서 돌릴 수 있다.
 
-| 지점 | 문제 |
-|---|---|
-| 예약 (`POST /listings/{id}/reserve`) | 동시 예약 → 한 판매 건에 예약금이 2건 잡힘 |
-| 본결제 (`POST /listings/{id}/pay`) | 동시 결제 → 에스크로 중복 생성 |
-| 잔액 차감 | 동시 결제 → 잔액이 음수가 되거나 덮어써짐 |
+---
 
-5단계 재설계로 `purchase`가 `reserve` + `pay` 둘로 갈렸음. **SPEC 5-1이 말하는 "2매 단독
-구매" 경합은 지금 구조에선 `reserve`가 첫 관문**이고, 여기만 막으면 뒤는 상태로 걸러짐.
+## 8. 9단계에서 할 일 — Actuator + AOP + 대시보드
+
+### 만들 것
+
+**AOP 2종** (`aop/`)
+- `ApiLogAspect` — `controller` 패키지 전체. 요청/응답/처리시간
+- `TradeAuditAspect` — 거래 서비스 메서드. 금전 이동 감사 로그 + Micrometer 카운터
+
+**Actuator**
+- 커스텀 HealthIndicator 2종 — `ExpiryBacklogHealthIndicator`, `LedgerIntegrityHealthIndicator`
+- 커스텀 메트릭 4종 — `planb.escrow.created` / `.confirmed`, `planb.deposit.forfeited`,
+  `planb.ticket.expired`
+- `application.yml`에 `management.endpoints.web.exposure.include` 추가 필요
+  (지금은 health·info만 열려 있음)
+
+**대시보드** — `static/index.html`, 다크 테마 + 네온, 카운트다운, 차트, 검증 버튼
+
+**`GET /api/admin/dashboard-summary`** — SPEC 4-8. 대시보드가 뭘 필요로 하는지 정한 뒤에 만들 것
 
 ### 미리 정해둘 것
-- **`simulate-concurrent`의 대상을 reserve로 할지 pay로 할지** — reserve가 자연스러움.
-  경합이 실제로 일어나는 첫 지점이고 결과가 `ALREADY_RESERVED` 하나로 깔끔하게 나옴
-- **락 없음 경로를 어떻게 만들지** — 서비스 메서드를 두 벌 두면 코드가 갈라짐.
-  플래그로 조회 메서드만 바꿔 끼우는 쪽이 나음
-- **시스템 계정 `balanceAfter`의 동시성** — 아래 "알려진 이슈"에 적어둔, 8단계에서
-  짚기로 한 항목
+- **AOP 프록시 한계를 실증으로 남길 것** — 이미 8단계에서 걸렸음(`NOTES.md` 13-6절).
+  SPEC 12장 6번 항목의 답이 이미 있으니, `TradeAuditAspect`를 붙일 때
+  `EscrowService.settle()` 같은 **내부 호출 메서드에는 안 걸린다**는 걸 로그로 한 번 더 보일 것
+- **HealthIndicator가 DOWN을 내는 조건** — 임계값을 정해야 함.
+  만료 처리 지연 건수 몇 건부터? 원장 차대는 1원이라도 어긋나면 DOWN이 자연스러움
+- **대시보드가 부를 API** — 이미 다 있음. `expiring-soon`, `category-summary`,
+  `expiry-loss`, `integrity-check`, `simulate-concurrent`.
+  `dashboard-summary`만 새로 만들면 됨
+- **차트는 외부 라이브러리 없이** CSS/SVG로 (SPEC 10장)
 
 ### 마친 뒤
 
@@ -365,12 +439,14 @@ Optional<Listing> findByIdForUpdate(@Param("id") Long id);
 ./scripts/verify.sh
 ```
 
-81개가 그대로 통과해야 함. 동시성 검증도 스크립트에 추가할 것.
-그리고 **8단계 끝이 1차 캡처 지점** — 📸 표시가 뜨는 자리를 한 번에 찍을 것.
+97개가 그대로 통과해야 함.
+
+> 9·10단계는 기존 API를 안 건드리므로 **8단계에서 찍은 캡처는 끝까지 살아남는다.**
+> 아직 안 찍었으면 지금이 1차 캡처 시점 — 📸 표시가 뜨는 자리를 한 번에 찍을 것.
 
 ---
 
-## 8. 참고 문서
+## 9. 참고 문서
 
 | 파일 | 내용 |
 |---|---|

@@ -393,7 +393,66 @@ assert_eq "잔액 일치" "$(balance user01)" "$(echo "$SUM1" | pick "d['balance
 assert_eq "없는 회원" 404 "$(status user01 GET /api/members/nobody/summary)"
 
 # ══════════════════════════════════════════════════════════════
-step "8. 최종 정합성"
+step "8. 동시성 — 락 없음 vs 락 적용"
+# ══════════════════════════════════════════════════════════════
+# 이 프로젝트 최고의 증빙. 같은 판매 건에 20개 스레드가 동시에 예약을 건다.
+# 바뀌는 건 조회에 락을 거느냐 뿐이고 나머지 코드 경로는 완전히 같다 —
+# 그래야 "락 말고 다른 게 달랐던 것 아니냐"에 답할 수 있다.
+#
+# 판매 4번을 쓴다. 앞 시나리오가 손대지 않은 유일한 OPEN 건이라서
+simulate() {
+  curl -s -X POST "$BASE/api/admin/simulate-concurrent" -H 'Content-Type: application/json' \
+    -d "{\"listingId\":4,\"threadCount\":20,\"useLock\":$1}"
+}
+
+NOLOCK=$(simulate false)
+info "락 없음: 성공 $(echo "$NOLOCK" | pick "d['success']") / 예약 $(echo "$NOLOCK" | pick "d['reservationCount']")건 생성"
+assert_eq "락 없음 — 중복 예약 발생" false "$(echo "$NOLOCK" | pick "str(d['dataIntegrity']).lower()")"
+assert_eq "락 없음 — 예약이 2건 이상" true \
+  "$(echo "$NOLOCK" | pick "str(d['reservationCount'] > 1).lower()")"
+# 잔액 lost update — SPEC 5-1의 세 번째 경합 지점이 실제로 일어나는 자리
+assert_eq "락 없음 — 잔액이 원장과 어긋남" false \
+  "$(echo "$NOLOCK" | pick "str(d['balanceIntegrity']).lower()")"
+# ⭐ 여기가 핵심. 중복이 생겨도 원장 차대는 맞는다 —
+#    정합성 검증이 이 종류의 버그는 못 잡는다는 뜻
+assert_eq "락 없음 — 그런데 원장 차대는 맞음" true \
+  "$(echo "$NOLOCK" | pick "str(d['ledgerBalanced']).lower()")"
+
+LOCKED=$(simulate true)
+info "락 적용: 성공 $(echo "$LOCKED" | pick "d['success']") / 예약 $(echo "$LOCKED" | pick "d['reservationCount']")건 생성"
+assert_eq "락 적용 — 1건만 성공" 1 "$(echo "$LOCKED" | pick "d['success']")"
+assert_eq "락 적용 — 나머지 19건 거절" 19 "$(echo "$LOCKED" | pick "d['failed']")"
+assert_eq "락 적용 — 거절 사유가 ALREADY_RESERVED" ALREADY_RESERVED \
+  "$(echo "$LOCKED" | pick "d['failures'][0]['reason']")"
+assert_eq "락 적용 — 예약 1건뿐" 1 "$(echo "$LOCKED" | pick "d['reservationCount']")"
+assert_eq "락 적용 — 데이터 정합" true "$(echo "$LOCKED" | pick "str(d['dataIntegrity']).lower()")"
+assert_eq "락 적용 — 잔액도 원장과 일치" true \
+  "$(echo "$LOCKED" | pick "str(d['balanceIntegrity']).lower()")"
+
+# 뒷정리가 됐는지. 안 되면 시연을 한 번밖에 못 한다
+assert_eq "뒷정리 후 판매 건 재개방" OPEN "$(curl -s "$BASE/api/listings/4" | pick "d['status']")"
+assert_eq "뒷정리 후 남은 예약 0건" 0 \
+  "$(sql_value "SELECT COUNT(*) FROM deposit WHERE listing_id=4 AND status='HELD'")"
+check_integrity "동시성 테스트 후 — 뒷정리까지 끝난 상태"
+
+# 입력 검증
+# 판매 21번은 시드에서 이미 COMPLETED이고 어떤 시나리오도 건드리지 않는다.
+# 만료 예정인 건(1번 등)을 쓰면 "지금 만료됐나"에 따라 결과가 갈려서 또 시각에 의존하게 된다
+assert_eq "OPEN 아닌 판매 건" 409 "$(curl -s -o /dev/null -w '%{http_code}' \
+  -X POST "$BASE/api/admin/simulate-concurrent" -H 'Content-Type: application/json' \
+  -d '{"listingId":21,"threadCount":5,"useLock":true}')"
+assert_eq "스레드 수 하한" 400 "$(curl -s -o /dev/null -w '%{http_code}' \
+  -X POST "$BASE/api/admin/simulate-concurrent" -H 'Content-Type: application/json' \
+  -d '{"listingId":4,"threadCount":1,"useLock":true}')"
+assert_eq "스레드 수 상한" 400 "$(curl -s -o /dev/null -w '%{http_code}' \
+  -X POST "$BASE/api/admin/simulate-concurrent" -H 'Content-Type: application/json' \
+  -d '{"listingId":4,"threadCount":51,"useLock":true}')"
+
+shot "⭐⭐ 22_동시성_락없음 / 23_동시성_락적용 — 두 응답을 나란히. 이게 PDF 하이라이트"
+info "락 없음 응답의 ledgerBalanced=true 를 같이 보일 것 — 정합성 검증이 못 잡는 버그라는 근거"
+
+# ══════════════════════════════════════════════════════════════
+step "9. 최종 정합성"
 # ══════════════════════════════════════════════════════════════
 check_integrity "전 시나리오 종료 후"
 shot "⭐ 29_최종정합성검증 — 이게 보고서 6장의 결론"

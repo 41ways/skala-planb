@@ -45,4 +45,16 @@ public interface DepositRepository extends JpaRepository<Deposit, Long> {
 
     /** 거래 요약용 — 회원의 상태별 예약금 건수 */
     long countByMemberIdAndStatus(String memberId, DepositStatus status);
+
+    /**
+     * 판매 건에 걸린 예약을 <b>전부</b> — 위의 단건 조회와 짝이 되는 메서드.
+     *
+     * 정상 상태라면 HELD는 많아야 하나뿐이라 단건 조회로 충분하다. 그런데 락이 없으면
+     * 여러 건이 생길 수 있고, 그때 단건 조회는 예외를 던진다. 동시성 시뮬레이터는
+     * 바로 그 깨진 상태를 <b>세고 치워야</b> 해서 목록으로 받는 쪽이 필요하다.
+     */
+    List<Deposit> findAllByListingIdAndStatus(Long listingId, DepositStatus status);
+
+    /** 시뮬레이터 결과 판정용 — 판매 건에 걸린 진행 중 예약 건수 */
+    long countByListingIdAndStatus(Long listingId, DepositStatus status);
 }
