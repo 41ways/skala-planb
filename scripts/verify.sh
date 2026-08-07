@@ -282,8 +282,9 @@ VAL=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/members" \
 assert_eq "입력 검증" 400 "$VAL"
 shot "04_validation_400 / 05_404 — Swagger에서"
 
-# 만료된 티켓은 스케줄러가 EXPIRED로 바꿔놨으므로 판매 건도 더 이상 살아 있지 않음
-assert_eq "실효된 판매 건 예약" 409 "$(status user01 POST /api/listings/16/reserve)"
+# 만료된 티켓은 스케줄러가 EXPIRED로 바꿔놨으므로 판매 건도 더 이상 살아 있지 않음.
+# 판매건 18은 user03 소유라 "본인 티켓" 검사에 먼저 걸리지 않고 상태 검사까지 도달함
+assert_eq "실효된 판매 건 예약" 409 "$(status user01 POST /api/listings/18/reserve)"
 
 # ══════════════════════════════════════════════════════════════
 step "7. 최종 정합성"
