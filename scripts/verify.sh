@@ -1,0 +1,297 @@
+#!/usr/bin/env bash
+#
+# PlanB Market 검증 스크립트
+#
+# 필수 시나리오를 순서대로 돌리면서 잔액과 정합성을 매 단계 확인한다.
+# 두 가지 용도로 쓴다:
+#   1) 회귀 테스트  — 새 기능을 붙인 뒤 앞 단계가 안 깨졌는지
+#   2) 캡처 가이드  — 📸 표시가 뜨는 지점에서 화면을 찍으면 됨
+#
+# 데이터를 실제로 바꾸므로 갓 띄운 앱에 대고 한 번만 돌릴 것.
+# 앱을 다시 띄우면 인메모리 H2가 초기화돼서 처음부터 다시 돌릴 수 있다.
+#
+#   사용법:  ./scripts/verify.sh [BASE_URL]
+#   기본값:  http://localhost:8080
+#
+set -uo pipefail
+
+BASE=${1:-http://localhost:8080}
+JAR_DIR=$(mktemp -d)
+PASS=0
+FAIL=0
+
+trap 'rm -rf "$JAR_DIR"' EXIT
+
+# ══════════════════════════════════════════════════════════════
+# 출력 도우미
+# ══════════════════════════════════════════════════════════════
+c_ok=$'\033[32m'; c_no=$'\033[31m'; c_hd=$'\033[36m'; c_cap=$'\033[35m'; c_off=$'\033[0m'
+
+step()  { printf "\n${c_hd}━━━ %s ━━━${c_off}\n" "$*"; }
+ok()    { PASS=$((PASS+1)); printf "  ${c_ok}✓${c_off} %s\n" "$*"; }
+no()    { FAIL=$((FAIL+1)); printf "  ${c_no}✗ %s${c_off}\n" "$*"; }
+info()  { printf "    %s\n" "$*"; }
+shot()  { printf "  ${c_cap}📸 %s${c_off}\n" "$*"; }
+
+assert_eq() { # 라벨 기대값 실제값
+  if [ "$2" = "$3" ]; then ok "$1 = $3"; else no "$1: 기대 $2, 실제 $3"; fi
+}
+
+# ══════════════════════════════════════════════════════════════
+# API 도우미
+# ══════════════════════════════════════════════════════════════
+
+# 회원마다 쿠키 항아리를 따로 둔다. 세션 기반이라 한 항아리를 돌려쓰면
+# 마지막에 로그인한 사람으로 덮어써져서 "남의 것 접근" 검증이 무의미해진다
+jar() { echo "$JAR_DIR/$1.cookie"; }
+
+login() {
+  curl -s -c "$(jar "$1")" -X POST "$BASE/api/members/login" \
+    -H 'Content-Type: application/json' \
+    -d "{\"id\":\"$1\",\"password\":\"pass1234\"}" -o /dev/null
+}
+
+# as <회원> <메서드> <경로> [본문]  -> 응답 본문
+as() {
+  local who=$1 method=$2 path=$3 body=${4:-}
+  if [ -n "$body" ]; then
+    curl -s -b "$(jar "$who")" -c "$(jar "$who")" -X "$method" "$BASE$path" \
+      -H 'Content-Type: application/json' -d "$body"
+  else
+    curl -s -b "$(jar "$who")" -c "$(jar "$who")" -X "$method" "$BASE$path"
+  fi
+}
+
+# status <회원> <메서드> <경로>  -> HTTP 상태 코드
+status() {
+  curl -s -o /dev/null -w '%{http_code}' -b "$(jar "$1")" -X "$2" "$BASE$3"
+}
+
+# jq 대신 python3. 맥 기본 환경에 jq가 없을 수 있어서
+pick() { python3 -c "import sys,json; d=json.load(sys.stdin)['body']; print($1)"; }
+
+balance()  { curl -s "$BASE/api/members/$1" | pick "d['balance']"; }
+integrity() { curl -s "$BASE/api/admin/integrity-check" | pick "$1"; }
+
+# 정합성 3종 + 고아 검사를 한 번에. 시나리오 사이마다 부른다
+check_integrity() {
+  local label=$1
+  local passed; passed=$(integrity "str(d['passed']).lower()")
+  if [ "$passed" = "true" ]; then
+    ok "정합성 PASS — $label"
+    info "차대 $(integrity "d['totalDebit']") / ESCROW_POOL $(integrity "d['escrowPoolBalance']") / DEPOSIT_POOL $(integrity "d['depositPoolBalance']") / PLATFORM $(integrity "d['platformBalance']")"
+  else
+    no "정합성 FAIL — $label"
+    curl -s "$BASE/api/admin/integrity-check" | python3 -m json.tool
+  fi
+}
+
+# 시간을 되돌린다. 청약철회 10분·결제 제한시간을 실시간으로 기다릴 수 없어서
+# H2 콘솔로 직접 컬럼을 만진다. 검증 목적에만 쓰는 우회로이고,
+# 이걸 위해 앱에 테스트 전용 API를 뚫지는 않았다
+sql() {
+  local sid
+  sid=$(curl -s "$BASE/h2-console/" | grep -o 'jsessionid=[a-f0-9]*' | head -1 | cut -d= -f2)
+  curl -s "$BASE/h2-console/login.do?jsessionid=$sid" \
+    --data-urlencode "driver=org.h2.Driver" --data-urlencode "url=jdbc:h2:mem:planb" \
+    --data-urlencode "user=sa" --data-urlencode "password=" -o /dev/null
+  curl -s "$BASE/h2-console/query.do?jsessionid=$sid" --data-urlencode "sql=$1" \
+    | tr -d '\n' | sed -e 's/<tr[^>]*>/\n/g' -e 's/<t[hd][^>]*>/|/g' -e 's/<[^>]*>//g' \
+    | grep -v '^\s*$' | tail -n +2
+}
+
+# 스칼라 한 값만 뽑아낸다. H2 콘솔은 결과 끝에 "(1 row, 0 ms)"를 붙여 보내서
+# 그대로 비교하면 값이 안 맞는 것처럼 보인다
+sql_value() {
+  sql "$1" | tail -1 | sed -e 's/([0-9].*$//' -e 's/|//g' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+
+# ══════════════════════════════════════════════════════════════
+
+printf "${c_hd}PlanB Market 검증  —  %s${c_off}\n" "$BASE"
+
+if ! curl -s -o /dev/null --max-time 3 "$BASE/api/admin/integrity-check"; then
+  printf "${c_no}앱에 연결할 수 없음. ./gradlew bootRun 먼저 실행할 것${c_off}\n"
+  exit 1
+fi
+
+for u in user01 user02 user03 user04 user05; do login "$u"; done
+
+# ══════════════════════════════════════════════════════════════
+step "0. 시드 상태"
+# ══════════════════════════════════════════════════════════════
+assert_eq "user01 초기 잔액" 580110 "$(balance user01)"
+assert_eq "user02 초기 잔액" 583815 "$(balance user02)"
+assert_eq "PLATFORM 초기 잔액" 45425 "$(integrity "d['platformBalance']")"
+check_integrity "시드"
+shot "01_h2_테이블목록 / 02_시드데이터 — H2 콘솔에서"
+shot "03_swagger_전체API — Swagger UI 태그 전부 펼쳐서"
+
+# ══════════════════════════════════════════════════════════════
+step "1. 정상 거래 — 예약 → 결제 → 확정"
+# ══════════════════════════════════════════════════════════════
+ASK=$(curl -s "$BASE/api/listings/5" | pick "d['askingPrice']")
+DEP=$((ASK / 10))
+REST=$((ASK - DEP))
+info "판매건 5: 희망가 $ASK / 예약금 $DEP / 결제 시 추가 $REST"
+
+B0=$(balance user01); S0=$(balance user02); P0=$(integrity "d['platformBalance']")
+
+as user01 POST /api/listings/5/reserve > /dev/null
+assert_eq "예약 후 구매자 잔액" "$((B0 - DEP))" "$(balance user01)"
+assert_eq "DEPOSIT_POOL" "$DEP" "$(integrity "d['depositPoolBalance']")"
+assert_eq "판매 건 상태" RESERVED "$(curl -s "$BASE/api/listings/5" | pick "d['status']")"
+check_integrity "예약 직후"
+shot "예약 응답 — 예약금·결제시한·추가결제액이 한 화면에"
+
+assert_eq "다른 사람 예약 차단" 409 "$(status user03 POST /api/listings/5/reserve)"
+
+ESC=$(as user01 POST /api/listings/5/pay | pick "d['id']")
+COMM=$(curl -s -b "$(jar user01)" "$BASE/api/escrows/$ESC" | pick "d['commission']")
+PAYOUT=$(curl -s -b "$(jar user01)" "$BASE/api/escrows/$ESC" | pick "d['sellerPayout']")
+assert_eq "결제 후 구매자 잔액" "$((B0 - ASK))" "$(balance user01)"
+assert_eq "결제 후 판매자 잔액(아직 안 받음)" "$S0" "$(balance user02)"
+assert_eq "ESCROW_POOL에 묶인 금액" "$ASK" "$(integrity "d['escrowPoolBalance']")"
+check_integrity "결제 직후 — 돈이 묶여 있는 상태"
+shot "⭐ 판매자 잔액이 안 늘었다 + 정합성 PASS. 에스크로의 핵심"
+
+as user01 POST "/api/escrows/$ESC/confirm" > /dev/null
+assert_eq "확정 후 판매자 잔액" "$((S0 + PAYOUT))" "$(balance user02)"
+assert_eq "확정 후 PLATFORM(수수료)" "$((P0 + COMM))" "$(integrity "d['platformBalance']")"
+assert_eq "ESCROW_POOL 비워짐" 0 "$(integrity "d['escrowPoolBalance']")"
+assert_eq "티켓 소유권 이전" user01 "$(curl -s "$BASE/api/tickets/5" | pick "d['ownerId']")"
+check_integrity "확정 후"
+shot "⭐ 08_정합성검증_PASS — 확정까지 끝난 뒤"
+shot "07_원장조회 — GET /api/members/user01/ledger"
+
+# ══════════════════════════════════════════════════════════════
+step "2. 예약금 청약철회 — 10분 내 취소"
+# ══════════════════════════════════════════════════════════════
+B1=$(balance user01)
+DEP6=$(as user01 POST /api/listings/6/reserve | pick "d['depositAmount']")
+assert_eq "예약금 홀드" "$((B1 - DEP6))" "$(balance user01)"
+
+RES=$(as user01 DELETE /api/listings/6/reserve)
+assert_eq "예약금 상태" RELEASED "$(echo "$RES" | pick "d['depositStatus']")"
+assert_eq "잔액 복구" "$B1" "$(balance user01)"
+assert_eq "판매 건 복귀" OPEN "$(curl -s "$BASE/api/listings/6" | pick "d['status']")"
+check_integrity "청약철회 후"
+shot "청약철회 — RELEASED + 잔액 복구"
+
+# ══════════════════════════════════════════════════════════════
+step "3. 예약금 몰수 — 10분 지난 뒤 취소"
+# ══════════════════════════════════════════════════════════════
+B2=$(balance user01); P2=$(integrity "d['platformBalance']")
+DEP6=$(as user01 POST /api/listings/6/reserve | pick "d['depositAmount']")
+DID=$(as user01 GET "/api/members/user01/reservations?count=1" | pick "d['list'][0]['depositId']")
+sql "UPDATE deposit SET held_at = DATEADD('MINUTE',-15,CURRENT_TIMESTAMP) WHERE id=$DID" > /dev/null
+info "예약 $DID 의 신청 시각을 15분 전으로 되돌림"
+
+RES=$(as user01 DELETE /api/listings/6/reserve)
+assert_eq "예약금 상태" FORFEITED "$(echo "$RES" | pick "d['depositStatus']")"
+assert_eq "잔액 안 돌아옴" "$((B2 - DEP6))" "$(balance user01)"
+assert_eq "몰수분이 PLATFORM으로" "$((P2 + DEP6))" "$(integrity "d['platformBalance']")"
+check_integrity "몰수 후"
+shot "⭐ 몰수 — 돈이 사라진 게 아니라 PLATFORM으로 옮겨갔고 검증은 그대로 PASS"
+
+# ══════════════════════════════════════════════════════════════
+step "4. 결제 제한시간 초과 — 스케줄러가 정리"
+# ══════════════════════════════════════════════════════════════
+B3=$(balance user01); P3=$(integrity "d['platformBalance']")
+DEP7=$(as user01 POST /api/listings/7/reserve | pick "d['depositAmount']")
+DID=$(as user01 GET "/api/members/user01/reservations?count=1" | pick "d['list'][0]['depositId']")
+sql "UPDATE deposit SET payment_deadline = DATEADD('MINUTE',-1,CURRENT_TIMESTAMP) WHERE id=$DID" > /dev/null
+info "예약 $DID 의 제한시간을 1분 전으로 되돌림"
+
+# 스케줄러가 아직 안 돌았어도 결제는 막혀야 한다.
+# 1분 주기 사이로 결제가 새어나가지 않게 pay()가 시한을 한 번 더 본다
+assert_eq "시한 지난 뒤 결제 차단" 400 "$(status user01 POST /api/listings/7/pay)"
+
+info "스케줄러 대기 (최대 70초)"
+for _ in $(seq 1 70); do
+  [ "$(sql_value "SELECT status FROM deposit WHERE id=$DID")" = "FORFEITED" ] && break
+  sleep 1
+done
+assert_eq "스케줄러가 몰수 처리" FORFEITED "$(sql_value "SELECT status FROM deposit WHERE id=$DID")"
+assert_eq "판매 건 다시 열림" OPEN "$(curl -s "$BASE/api/listings/7" | pick "d['status']")"
+assert_eq "몰수분이 PLATFORM으로" "$((P3 + DEP7))" "$(integrity "d['platformBalance']")"
+assert_eq "잔액 안 돌아옴" "$((B3 - DEP7))" "$(balance user01)"
+check_integrity "제한시간 초과 처리 후"
+shot "스케줄러 로그 — 콘솔의 '결제 제한시간 초과 예약 N건 몰수 처리'"
+
+# ══════════════════════════════════════════════════════════════
+step "4-2. 알림 — 스케줄러가 만든 것들"
+# ══════════════════════════════════════════════════════════════
+UNREAD=$(as user01 GET /api/members/user01/notifications/unread-count | python3 -c "import sys,json; print(json.load(sys.stdin)['body'])")
+if [ "$UNREAD" -gt 0 ]; then ok "안읽음 알림 $UNREAD건"; else no "알림이 하나도 안 쌓임"; fi
+info "$(as user01 GET '/api/members/user01/notifications?count=5' | python3 -c "
+import sys,json
+for n in json.load(sys.stdin)['body']['list']: print('    %-22s %s' % (n['type'], n['title']))")"
+
+NID=$(as user01 GET '/api/members/user01/notifications?count=1' | pick "d['list'][0]['id']")
+assert_eq "읽음 처리" True "$(as user01 PATCH "/api/notifications/$NID/read" | pick "d['isRead']")"
+assert_eq "안읽음 1건 줄어듦" "$((UNREAD - 1))" "$(as user01 GET /api/members/user01/notifications/unread-count | python3 -c "import sys,json; print(json.load(sys.stdin)['body'])")"
+as user01 PATCH /api/members/user01/notifications/read-all > /dev/null
+assert_eq "전체 읽음 후 0건" 0 "$(as user01 GET /api/members/user01/notifications/unread-count | python3 -c "import sys,json; print(json.load(sys.stdin)['body'])")"
+assert_eq "남의 알림 조회" 403 "$(status user02 GET /api/members/user01/notifications)"
+shot "17_알림목록 — 만료 임박·마감 임박·몰수 통보가 한 화면에"
+
+# ══════════════════════════════════════════════════════════════
+step "4-3. 만료 실효 — 스케줄러가 티켓을 소멸시킴"
+# ══════════════════════════════════════════════════════════════
+# 시드에 이미 만료된 티켓 3건(16·17·18)이 LISTED/OPEN으로 들어 있음.
+# 스케줄러가 EXPIRED로 바꿔야 정상
+info "스케줄러 대기 (최대 70초)"
+for _ in $(seq 1 70); do
+  [ "$(sql_value "SELECT status FROM ticket WHERE id=16")" = "EXPIRED" ] && break
+  sleep 1
+done
+assert_eq "만료 티켓 16 실효" EXPIRED "$(sql_value "SELECT status FROM ticket WHERE id=16")"
+assert_eq "만료 티켓 17 실효" EXPIRED "$(sql_value "SELECT status FROM ticket WHERE id=17")"
+assert_eq "만료 티켓 18 실효" EXPIRED "$(sql_value "SELECT status FROM ticket WHERE id=18")"
+assert_eq "판매 건도 실효" EXPIRED "$(sql_value "SELECT status FROM listing WHERE id=16")"
+assert_eq "실효 알림 발송" 3 "$(sql_value "SELECT COUNT(*) FROM notification WHERE type='TICKET_EXPIRED'")"
+check_integrity "만료 실효 후"
+shot "18_만료실효 / 16_스케줄러로그 — 콘솔의 '만료 티켓 N건 실효 처리'"
+
+# ══════════════════════════════════════════════════════════════
+step "5. 판매자 철회 — 예약금 전액 환불"
+# ══════════════════════════════════════════════════════════════
+B4=$(balance user01)
+as user01 POST /api/listings/8/reserve > /dev/null
+as user05 DELETE /api/listings/8 > /dev/null
+assert_eq "예약금 전액 환불" "$B4" "$(balance user01)"
+assert_eq "판매 건 철회됨" WITHDRAWN "$(curl -s "$BASE/api/listings/8" | pick "d['status']")"
+check_integrity "판매자 철회 후"
+
+# ══════════════════════════════════════════════════════════════
+step "6. 예외 처리"
+# ══════════════════════════════════════════════════════════════
+assert_eq "본인 티켓 예약" 400 "$(status user01 POST /api/listings/1/reserve)"
+assert_eq "예약 없이 결제" 404 "$(status user01 POST /api/listings/9/pay)"
+assert_eq "남의 원장 조회" 403 "$(status user02 GET /api/members/user01/ledger)"
+# 본문을 제대로 채워 보낸다. 빈 본문이면 세션 검사보다 Bean Validation이 먼저 걸려서
+# 401이 아니라 400이 나옴 — 인증이 안 걸린 게 아니라 검증 순서 때문
+assert_eq "비로그인 티켓 등록" 401 "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/tickets" \
+      -H 'Content-Type: application/json' \
+      -d '{"category":"MOVIE","title":"비로그인 테스트","originalPrice":10000,"quantity":1,"eventAt":"2027-01-01T19:00:00"}')"
+assert_eq "없는 티켓 조회" 404 "$(status user01 GET /api/tickets/99999)"
+
+VAL=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/members" \
+      -H 'Content-Type: application/json' -d '{"id":"AB","password":"123"}')
+assert_eq "입력 검증" 400 "$VAL"
+shot "04_validation_400 / 05_404 — Swagger에서"
+
+# 만료된 티켓은 스케줄러가 EXPIRED로 바꿔놨으므로 판매 건도 더 이상 살아 있지 않음
+assert_eq "실효된 판매 건 예약" 409 "$(status user01 POST /api/listings/16/reserve)"
+
+# ══════════════════════════════════════════════════════════════
+step "7. 최종 정합성"
+# ══════════════════════════════════════════════════════════════
+check_integrity "전 시나리오 종료 후"
+shot "⭐ 29_최종정합성검증 — 이게 보고서 6장의 결론"
+
+# ══════════════════════════════════════════════════════════════
+printf "\n${c_hd}━━━ 결과 ━━━${c_off}\n"
+printf "  통과 ${c_ok}%d${c_off} / 실패 ${c_no}%d${c_off}\n\n" "$PASS" "$FAIL"
+[ "$FAIL" -eq 0 ] || exit 1

@@ -1,0 +1,55 @@
+package com.skala.planbmarket.repository;
+
+import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import com.skala.planbmarket.domain.entity.Listing;
+import com.skala.planbmarket.domain.enums.Category;
+import com.skala.planbmarket.domain.enums.ListingStatus;
+
+/**
+ * Listing JPA Repository.
+ *
+ * 목록 검색에서 카테고리 필터를 IN 절로 받는 게 눈에 띌 텐데 의도한 것임.
+ * "필터 안 걸림"을 NULL로 표현하면 쿼리마다 (:param IS NULL OR ...) 가 붙어서 지저분해지고,
+ * JPQL에서 enum에 NULL을 바인딩할 때 타입 추론이 걸리는 경우도 있음.
+ * 필터가 없으면 서비스가 후보 전체를 담아서 넘기면 됨 — 쿼리는 조건 하나로 끝남.
+ */
+@Repository
+public interface ListingRepository extends JpaRepository<Listing, Long> {
+
+    @EntityGraph(attributePaths = {"ticket", "seller"})
+    @Query("""
+            SELECT l FROM Listing l
+            WHERE l.status IN :statuses
+              AND l.ticket.category IN :categories
+            """)
+    Page<Listing> search(@Param("statuses") Collection<ListingStatus> statuses,
+                         @Param("categories") Collection<Category> categories,
+                         Pageable pageable);
+
+    /** 단건 조회에서도 티켓·판매자를 같이 가져옴. open-in-view가 꺼져 있어 나중엔 못 읽음 */
+    @EntityGraph(attributePaths = {"ticket", "seller"})
+    Optional<Listing> findWithDetailById(Long id);
+
+    /** 만료 임박 목록. 남은 시간이 짧은 것부터 */
+    @EntityGraph(attributePaths = {"ticket", "seller"})
+    List<Listing> findByStatusInAndTicketExpiresAtBetweenOrderByTicketExpiresAtAsc(
+            Collection<ListingStatus> statuses, LocalDateTime from, LocalDateTime to);
+
+
+    /** 티켓에 지금 살아 있는 판매 건. 철회 후 재등록이 가능해서 여러 건 중 활성만 골라야 함 */
+    @EntityGraph(attributePaths = {"ticket", "seller"})
+    Optional<Listing> findFirstByTicketIdAndStatusInOrderByIdDesc(
+            Long ticketId, Collection<ListingStatus> statuses);
+}

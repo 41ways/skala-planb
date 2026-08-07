@@ -1,0 +1,7 @@
+build/
+.gradle/
+.idea/
+.vscode/
+*.log
+.DS_Store
+HELP.md
