@@ -3,631 +3,1946 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PlanB Market — 소멸 모니터링</title>
+<title>PlanB — 놓치기 전에, 넘기세요</title>
+<meta name="description" content="만료 기한이 있는 티켓을 안전하게 사고파는 P2P 양도 마켓">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🎟️</text></svg>">
 <!--
-  단일 HTML. 외부 라이브러리 0개 — 차트도 CSS/SVG로 직접 그린다.
+  단일 HTML · 외부 라이브러리 0개. 차트도 CSS/SVG로 직접 그린다.
   CDN에 기대면 오프라인 시연에서 화면이 통째로 비고, 차트가 막대·꺾은선 둘뿐이라
   라이브러리를 끌어올 만큼 복잡하지도 않다.
 
-  테마: SPEC 10장은 "다크 테마 + 네온"이었지만 기본을 밝은 쪽으로 뒀다.
-  색은 전부 CSS 변수라 :root[data-theme]만 갈아끼우면 되고, 토글로 둘 다 남겨서
-  SPEC이 요구한 다크 화면도 그대로 보여줄 수 있다.
-
-  이 화면의 주제는 하나다 — "가만히 두면 손해가 난다".
-  그래서 카운트다운이 1초마다 줄고, 임박한 것부터 위로 오고, 급할수록 붉어진다.
+  이 서비스의 주제는 하나다 — "가만히 두면 손해가 난다".
+  그래서 카운트다운이 1초마다 줄고, 임박한 것이 위로 오고, 급할수록 붉어진다.
 -->
 <style>
-  /* ── 밝은 테마 (기본) ── */
-  :root, :root[data-theme="light"]{
-    --bg:#f6f8fc; --panel:#ffffff; --panel2:#f1f4fa; --line:#dde4f0;
-    --txt:#16202f; --dim:#5b6b85; --dim2:#8494ab;
-    --cyan:#0891b2; --magenta:#be1a63; --amber:#b45309;
-    --green:#047857; --red:#dc2626;
-    --shadow:0 1px 2px rgba(16,32,64,.06), 0 4px 14px rgba(16,32,64,.05);
-  }
-  /* ── 다크 테마 (SPEC 10장의 네온) ── */
-  :root[data-theme="dark"]{
-    --bg:#0a0e17; --panel:#121826; --panel2:#0e1420; --line:#1e2942;
-    --txt:#e6edf7; --dim:#8494b0; --dim2:#5a6a86;
-    --cyan:#22d3ee; --magenta:#f0369a; --amber:#fbbf24;
-    --green:#34d399; --red:#f43f5e;
-    --shadow:none;
-  }
-  *{box-sizing:border-box}
-  body{
-    margin:0; background:var(--bg); color:var(--txt);
-    font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;
-    font-size:14px; line-height:1.5;
-  }
-  a{color:var(--cyan)}
-  .wrap{max-width:1240px; margin:0 auto; padding:20px 16px 60px}
+/* ══════════════════════════════════════════════════════════
+   0. 토큰
+   ══════════════════════════════════════════════════════════ */
+:root, :root[data-theme="light"]{
+  --bg:#f4f5f9;      --bg2:#eceef5;
+  --surface:#ffffff; --surface2:#f7f8fc; --surface3:#eef0f7;
+  --line:#e3e7f0;    --line2:#d3d9e6;
+  --txt:#141a26;     --dim:#5c6880;     --dim2:#8b95aa;
+  --brand:#4f46e5;   --brand2:#7c3aed;  --brand-soft:#eef0ff;
+  --hot:#e11d48;     --hot-soft:#ffeef2;
+  --warn:#d97706;    --warn-soft:#fff5e6;
+  --ok:#0d9488;      --ok-soft:#e6faf7;
+  --info:#0284c7;
+  --sh1:0 1px 2px rgba(20,30,60,.05);
+  --sh2:0 2px 6px rgba(20,30,60,.06), 0 12px 28px rgba(20,30,60,.07);
+  --sh3:0 18px 60px rgba(20,30,60,.18);
+  --navbg:rgba(255,255,255,.86);
+}
+:root[data-theme="dark"]{
+  --bg:#080b12;      --bg2:#0c111b;
+  --surface:#111725; --surface2:#0d1320; --surface3:#182031;
+  --line:#1d2739;    --line2:#2a3852;
+  --txt:#e8eefb;     --dim:#93a1bd;      --dim2:#65738f;
+  --brand:#818cf8;   --brand2:#a78bfa;   --brand-soft:#1a1f3d;
+  --hot:#fb7185;     --hot-soft:#2a1220;
+  --warn:#fbbf24;    --warn-soft:#2b2010;
+  --ok:#2dd4bf;      --ok-soft:#0d2a2a;
+  --info:#38bdf8;
+  --sh1:none; --sh2:0 12px 34px rgba(0,0,0,.45); --sh3:0 24px 70px rgba(0,0,0,.6);
+  --navbg:rgba(12,17,27,.86);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--txt);
+  font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,-apple-system,sans-serif;
+  font-size:14px; line-height:1.55; -webkit-font-smoothing:antialiased;
+}
+a{color:inherit; text-decoration:none}
+button,input,select,textarea{font-family:inherit; font-size:inherit; color:inherit}
+button{cursor:pointer; border:0; background:none}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--line2); border-radius:10px; border:3px solid var(--bg)}
+.tnum{font-variant-numeric:tabular-nums}
+.wrap{max-width:1280px; margin:0 auto; padding:0 20px}
 
-  /* ── 헤더 ── */
-  header{display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:6px}
-  h1{
-    font-size:22px; margin:0; letter-spacing:-.4px;
-    background:linear-gradient(90deg,var(--cyan),var(--magenta));
-    -webkit-background-clip:text; background-clip:text; color:transparent;
-  }
-  .sub{color:var(--dim); font-size:12px}
-  .idbar{margin-left:auto; display:flex; align-items:center; gap:8px}
-  select,button{
-    font-family:inherit; font-size:12px; color:var(--txt);
-    background:var(--panel); border:1px solid var(--line); border-radius:7px;
-    padding:6px 10px; cursor:pointer;
-  }
-  button:hover{border-color:var(--cyan)}
-  button:disabled{opacity:.5; cursor:default}
-  .who{color:var(--cyan); font-size:12px}
+/* ══════════════════════════════════════════════════════════
+   1. 헤더
+   ══════════════════════════════════════════════════════════ */
+.topbar{
+  position:sticky; top:0; z-index:60;
+  background:var(--navbg); backdrop-filter:saturate(180%) blur(14px);
+  border-bottom:1px solid var(--line);
+}
+.topbar .wrap{display:flex; align-items:center; gap:20px; height:78px}
+.brand{display:flex; align-items:center; gap:11px; flex-shrink:0}
+.brand .mark{
+  width:40px; height:40px; border-radius:13px; display:grid; place-items:center;
+  background:linear-gradient(135deg,var(--brand),var(--brand2)); color:#fff;
+  font-size:20px; box-shadow:0 5px 15px rgba(79,70,229,.34);
+}
+.brand .name{font-size:25px; font-weight:800; letter-spacing:-1px; white-space:nowrap}
+.brand .name em{font-style:normal; color:var(--brand)}
 
-  /* ── 카드 ── */
-  .cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin:16px 0}
-  .card{
-    background:var(--panel); border:1px solid var(--line); border-radius:12px;
-    padding:14px 16px; position:relative; overflow:hidden; box-shadow:var(--shadow);
-  }
-  .card::before{content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--accent,var(--line))}
-  .card .k{color:var(--dim); font-size:12px; display:flex; align-items:center; gap:6px}
-  .card .v{font-size:26px; font-weight:700; margin-top:6px; letter-spacing:-.5px}
-  .card .n{font-size:12px; color:var(--dim2); margin-top:2px}
-  .c-urgent{--accent:var(--red)} .c-loss{--accent:var(--magenta)}
-  .c-wait{--accent:var(--amber)} .c-money{--accent:var(--cyan)}
+.navtabs{display:flex; gap:3px; margin-left:10px}
+.navtabs button{
+  padding:10px 16px; border-radius:11px; font-size:15.5px; font-weight:700; color:var(--dim);
+  letter-spacing:-.3px; white-space:nowrap;
+}
+.navtabs button:hover{background:var(--surface3); color:var(--txt)}
+.navtabs button.on{background:var(--brand-soft); color:var(--brand)}
 
-  /* ── 섹션 ── */
-  section{margin-top:22px}
-  h2{font-size:13px; color:var(--dim); margin:0 0 10px; font-weight:600; letter-spacing:.3px}
-  .panel{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px; box-shadow:var(--shadow)}
+.searchbox{
+  flex:1 1 140px; min-width:0; max-width:340px; margin-left:auto;
+  display:flex; align-items:center; gap:8px;
+  background:var(--surface2); border:1px solid var(--line);
+  border-radius:12px; padding:0 13px; height:44px;
+}
+.searchbox:focus-within{border-color:var(--brand); background:var(--surface)}
+.searchbox input{flex:1; border:0; background:none; outline:none; font-size:14px}
+.searchbox .ico{color:var(--dim2); font-size:14px}
 
-  /* ── 판매 목록 ── */
-  .tabs{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px}
-  .tab{font-size:12px; padding:5px 11px; border-radius:999px; border:1px solid var(--line); background:var(--panel2); color:var(--dim); cursor:pointer}
-  .tab.on{background:var(--cyan); border-color:var(--cyan); color:#fff; font-weight:600}
-  .rows{display:flex; flex-direction:column; gap:8px}
-  .item{border:1px solid var(--line); border-left:3px solid var(--u,var(--dim2)); border-radius:9px; background:var(--panel2); overflow:hidden}
-  .row{display:flex; align-items:center; gap:12px; padding:11px 14px; cursor:pointer}
-  .row:hover{background:var(--panel)}
-  .row .caret{color:var(--dim2); font-size:11px; width:12px; transition:transform .15s}
-  .item.open .caret{transform:rotate(90deg)}
-  .row .t{flex:1; min-width:0}
-  .row .title{font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:600}
-  .row .meta{font-size:11px; color:var(--dim2); margin-top:2px}
-  .row .cd{font-variant-numeric:tabular-nums; font-size:15px; font-weight:700; min-width:100px; text-align:right; color:var(--u,var(--txt))}
-  .row .price{min-width:110px; text-align:right; font-size:13px}
-  .row .price .off{font-size:11px; color:var(--dim2)}
-  .chip{font-size:10px; padding:2px 7px; border-radius:999px; border:1px solid var(--line); color:var(--dim); margin-left:6px; white-space:nowrap}
-  .chip.seat{border-color:var(--cyan); color:var(--cyan)}
-  .chip.mile{border-color:var(--amber); color:var(--amber)}
-  .blink{animation:bl 1s steps(1,end) infinite}
-  @keyframes bl{50%{opacity:.28}}
-  .empty{color:var(--dim2); font-size:12px; padding:14px 2px}
+.acts{display:flex; align-items:center; gap:8px; flex-shrink:0}
+.iconbtn{
+  position:relative; width:44px; height:44px; border-radius:12px;
+  display:grid; place-items:center; font-size:17px;
+  border:1px solid var(--line); background:var(--surface);
+}
+.iconbtn:hover{border-color:var(--brand); color:var(--brand)}
+.badge{
+  position:absolute; top:-5px; right:-5px; min-width:18px; height:18px; padding:0 5px;
+  border-radius:9px; background:var(--hot); color:#fff; font-size:10.5px; font-weight:800;
+  display:grid; place-items:center; border:2px solid var(--surface);
+}
+.wallet{
+  display:flex; align-items:center; gap:7px; height:44px; padding:0 14px;
+  border-radius:12px; border:1px solid var(--line); background:var(--surface); font-size:13px;
+}
+.wallet b{font-size:14.5px; letter-spacing:-.3px}
+.wallet .uid{color:var(--brand); font-weight:700}
+.btn-sell{
+  height:44px; padding:0 18px; border-radius:12px; font-size:14.5px; font-weight:700; color:#fff;
+  background:linear-gradient(135deg,var(--brand),var(--brand2));
+  box-shadow:0 4px 14px rgba(79,70,229,.3);
+}
+.btn-sell:hover{filter:brightness(1.07)}
+.btn-login{
+  height:44px; padding:0 18px; border-radius:12px; font-size:14.5px; font-weight:700;
+  border:1px solid var(--line2); background:var(--surface);
+}
+.btn-login:hover{border-color:var(--brand); color:var(--brand)}
+/* 헤더가 좁아지면 검색을 먼저 접는다 — 메뉴와 타이틀이 줄어드는 것보다 낫다 */
+@media(max-width:1160px){.searchbox{display:none}}
+@media(max-width:760px){.navtabs button{padding:9px 11px; font-size:14px}}
 
-  /* ── 상세 패널 (드릴다운) ── */
-  .detail{display:none; border-top:1px dashed var(--line); padding:13px 14px 15px; background:var(--panel)}
-  .item.open .detail{display:block}
-  .dgrid{display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px 18px}
-  .f{font-size:12px}
-  .f .lbl{color:var(--dim2); font-size:11px}
-  .f .val{color:var(--txt); font-weight:600; margin-top:1px}
-  .seatbox{display:flex; gap:6px; flex-wrap:wrap; margin-top:4px}
-  .seatpill{
-    font-size:11px; font-weight:700; padding:4px 9px; border-radius:6px;
-    border:1px solid var(--cyan); color:var(--cyan); background:var(--panel2);
-    font-variant-numeric:tabular-nums;
-  }
-  .dnote{margin-top:11px; font-size:11px; color:var(--dim2); border-top:1px solid var(--line); padding-top:9px}
-  .dact{margin-top:11px; display:flex; gap:7px; flex-wrap:wrap; align-items:center}
+/* ── 실시간 소멸 티커 ── */
+.ticker{
+  background:linear-gradient(95deg,#1a1a2e,#2a2247 48%,#3a2145);
+  color:#fff; overflow:hidden; height:36px; position:relative;
+}
+.ticker .wrap{display:flex; align-items:center; height:36px; gap:14px; overflow:hidden}
+.ticker .lead{
+  flex-shrink:0; font-size:11px; font-weight:800; letter-spacing:.4px;
+  background:rgba(255,255,255,.14); padding:3px 9px; border-radius:999px;
+}
+.ticker .lane{flex:1; overflow:hidden; -webkit-mask-image:linear-gradient(90deg,transparent,#000 3%,#000 92%,transparent)}
+.ticker .train{display:inline-flex; gap:34px; white-space:nowrap; animation:slide 42s linear infinite; padding-left:100%}
+.ticker:hover .train{animation-play-state:paused}
+@keyframes slide{from{transform:translateX(0)}to{transform:translateX(-100%)}}
+.ticker .it{font-size:12px; opacity:.92}
+.ticker .it b{color:#ffd6dd; font-weight:800}
+.ticker .it .c{color:#7ee7d8; font-weight:800}
 
-  /* ── 차트 ── */
-  .charts{display:grid; grid-template-columns:1fr 1fr; gap:12px}
-  @media(max-width:820px){.charts{grid-template-columns:1fr}}
-  .bar{display:flex; align-items:center; gap:9px; margin-bottom:7px; font-size:12px}
-  .bar .nm{width:74px; color:var(--dim); flex-shrink:0}
-  .bar .track{flex:1; height:16px; background:var(--panel2); border-radius:5px; overflow:hidden; border:1px solid var(--line)}
-  .bar .fill{height:100%; background:linear-gradient(90deg,var(--magenta),var(--amber)); border-radius:4px 0 0 4px}
-  .bar .pc{width:82px; text-align:right; color:var(--dim2); font-variant-numeric:tabular-nums}
+/* ── 카테고리 바 ── */
+.catbar{background:var(--surface); border-bottom:1px solid var(--line); position:sticky; top:78px; z-index:50}
+.catbar .wrap{display:flex; gap:7px; overflow-x:auto; padding-top:11px; padding-bottom:11px; scrollbar-width:none}
+.catbar .wrap::-webkit-scrollbar{display:none}
+.cat{
+  flex-shrink:0; display:flex; align-items:center; gap:6px;
+  padding:8px 15px; border-radius:999px; font-size:14px; font-weight:600;
+  border:1px solid var(--line); background:var(--surface2); color:var(--dim);
+}
+.cat:hover{border-color:var(--brand); color:var(--brand)}
+.cat.on{background:var(--txt); border-color:var(--txt); color:var(--bg); font-weight:700}
+.cat .e{font-size:15px}
 
-  /* ── 검증 ── */
-  .btns{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; align-items:center}
-  .btn-p{border-color:var(--cyan); color:var(--cyan)}
-  .btn-d{border-color:var(--magenta); color:var(--magenta)}
-  .verdict{display:inline-flex; align-items:center; gap:7px; padding:5px 12px; border-radius:999px; font-size:12px; font-weight:700}
-  .pass{background:color-mix(in srgb, var(--green) 14%, transparent); color:var(--green); border:1px solid var(--green)}
-  .fail{background:color-mix(in srgb, var(--red) 14%, transparent); color:var(--red); border:1px solid var(--red)}
-  pre{
-    background:var(--panel2); border:1px solid var(--line); border-radius:9px;
-    padding:11px 13px; font-size:11.5px; line-height:1.55; overflow:auto; max-height:340px;
-    margin:10px 0 0; white-space:pre-wrap; word-break:break-all; color:var(--dim);
-  }
-  .cmp{display:grid; grid-template-columns:1fr 1fr; gap:12px}
-  @media(max-width:820px){.cmp{grid-template-columns:1fr}}
-  .cmp h3{font-size:12px; margin:0; color:var(--dim)}
-  .foot{margin-top:26px; color:var(--dim2); font-size:11px; text-align:center}
-  .tick{color:var(--dim2); font-size:11px}
+/* ══════════════════════════════════════════════════════════
+   2. 공통 파츠
+   ══════════════════════════════════════════════════════════ */
+/* main은 .wrap을 겸한다. 클래스 선택자가 이기므로 좌우 패딩까지 같이 적어야 먹는다 */
+main.wrap{padding:38px 20px 74px; min-height:60vh}
+.sec{margin-bottom:30px}
+.sec-h{display:flex; align-items:flex-end; gap:10px; margin-bottom:13px; flex-wrap:wrap}
+.sec-h h2{font-size:18px; margin:0; letter-spacing:-.5px; font-weight:800}
+.sec-h .desc{font-size:12.5px; color:var(--dim2); padding-bottom:2px}
+.sec-h .more{margin-left:auto; font-size:12.5px; color:var(--brand); font-weight:600}
+.panel{background:var(--surface); border:1px solid var(--line); border-radius:16px; box-shadow:var(--sh1)}
+.pad{padding:18px 20px}
+.muted{color:var(--dim2)}
+.empty{color:var(--dim2); font-size:13px; padding:34px 10px; text-align:center}
+.empty .big{font-size:30px; display:block; margin-bottom:8px; opacity:.6}
+
+.pill{
+  display:inline-flex; align-items:center; gap:4px; font-size:10.5px; font-weight:700;
+  padding:3px 8px; border-radius:999px; border:1px solid var(--line2); color:var(--dim);
+  background:var(--surface2); white-space:nowrap;
+}
+.pill.hot{background:var(--hot-soft); border-color:transparent; color:var(--hot)}
+.pill.warn{background:var(--warn-soft); border-color:transparent; color:var(--warn)}
+.pill.ok{background:var(--ok-soft); border-color:transparent; color:var(--ok)}
+.pill.brand{background:var(--brand-soft); border-color:transparent; color:var(--brand)}
+
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  height:40px; padding:0 16px; border-radius:11px; font-size:13.5px; font-weight:700;
+  border:1px solid var(--line2); background:var(--surface); color:var(--txt); white-space:nowrap;
+}
+.btn:hover{border-color:var(--brand); color:var(--brand)}
+.btn:disabled{opacity:.45; cursor:not-allowed; border-color:var(--line)}
+.btn:disabled:hover{color:var(--txt)}
+.btn.primary{background:linear-gradient(135deg,var(--brand),var(--brand2)); color:#fff; border-color:transparent; box-shadow:0 4px 14px rgba(79,70,229,.28)}
+.btn.primary:hover{filter:brightness(1.07); color:#fff}
+.btn.danger{background:var(--hot); border-color:transparent; color:#fff}
+.btn.danger:hover{filter:brightness(1.07); color:#fff}
+.btn.sm{height:32px; padding:0 11px; font-size:12px; border-radius:9px}
+.btn.blk{width:100%}
+
+.fld{margin-bottom:13px}
+.fld label{display:block; font-size:12px; font-weight:700; color:var(--dim); margin-bottom:5px}
+.fld input,.fld select,.fld textarea{
+  width:100%; height:42px; padding:0 13px; border-radius:11px;
+  border:1px solid var(--line2); background:var(--surface2); outline:none; font-size:14px;
+}
+.fld input:focus,.fld select:focus{border-color:var(--brand); background:var(--surface)}
+.fld .hint{font-size:11.5px; color:var(--dim2); margin-top:5px}
+.row2{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+
+/* ══════════════════════════════════════════════════════════
+   3. 상태 스트립 (KPI)
+   ══════════════════════════════════════════════════════════ */
+.kpis{display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:26px}
+@media(max-width:900px){.kpis{grid-template-columns:repeat(2,1fr)}}
+.kpi{
+  background:var(--surface); border:1px solid var(--line); border-radius:16px;
+  padding:15px 17px; position:relative; overflow:hidden; box-shadow:var(--sh1);
+}
+/* 하드 엣지 원은 7%만 깔아도 테두리가 또렷하게 보인다. 가장자리를 흘려보낸다 */
+.kpi::after{
+  content:''; position:absolute; right:-30px; top:-30px; width:112px; height:112px;
+  border-radius:50%; opacity:.13; pointer-events:none;
+  background:radial-gradient(circle at 38% 62%, var(--acc,var(--brand)), transparent 68%);
+}
+.kpi .k{font-size:11.5px; color:var(--dim); font-weight:600; display:flex; align-items:center; gap:5px}
+.kpi .v{font-size:25px; font-weight:800; letter-spacing:-1px; margin-top:5px; line-height:1.15}
+.kpi .v small{font-size:14px; font-weight:700; margin-left:1px}
+.kpi .n{font-size:11.5px; color:var(--dim2); margin-top:3px}
+.k-hot{--acc:var(--hot)} .k-hot .v{color:var(--hot)}
+.k-warn{--acc:var(--warn)}
+.k-ok{--acc:var(--ok)}
+.k-brand{--acc:var(--brand)}
+
+/* ══════════════════════════════════════════════════════════
+   4. 히어로 — 지금 가장 급한 매물
+   ══════════════════════════════════════════════════════════ */
+/* 가로 캐러셀 — 급한 매물이 한 줄로 흘러가고, 끝단은 페이드로 잘린다 */
+.herowrap{position:relative; margin:0 -4px}
+.hero{
+  display:flex; gap:13px; overflow-x:auto; scroll-snap-type:x mandatory;
+  scroll-behavior:smooth; padding:3px 4px 8px; scrollbar-width:none;
+}
+.hero::-webkit-scrollbar{display:none}
+/* 좌우 끝 페이드 — 더 있다는 신호 */
+.herowrap::before,.herowrap::after{
+  content:''; position:absolute; top:0; bottom:8px; width:46px; pointer-events:none; z-index:2;
+  opacity:0; transition:opacity .2s;
+}
+.herowrap::before{left:0;  background:linear-gradient(90deg,var(--bg),transparent)}
+.herowrap::after {right:0; background:linear-gradient(270deg,var(--bg),transparent)}
+.herowrap.more-l::before{opacity:1}
+.herowrap.more-r::after{opacity:1}
+.harrow{
+  position:absolute; top:50%; transform:translateY(-50%); z-index:3;
+  width:36px; height:36px; border-radius:50%; display:grid; place-items:center;
+  background:var(--surface); border:1px solid var(--line); box-shadow:var(--sh2);
+  color:var(--txt); font-size:19px; font-weight:700; line-height:1; padding-bottom:3px;
+  opacity:0; transition:opacity .2s, transform .12s;
+}
+.harrow.l{left:-6px} .harrow.r{right:-6px}
+.harrow:hover{border-color:var(--brand); color:var(--brand)}
+.harrow:active{transform:translateY(-50%) scale(.92)}
+.herowrap.more-l .harrow.l,.herowrap.more-r .harrow.r{opacity:1}
+
+.hcard{
+  position:relative; border-radius:18px; overflow:hidden; cursor:pointer;
+  flex:0 0 clamp(268px, 31.5%, 372px); scroll-snap-align:start;
+  min-height:162px; padding:17px 18px; color:#fff; display:flex; flex-direction:column;
+  background:
+    radial-gradient(120% 130% at 0% 0%, rgba(255,255,255,.22), rgba(255,255,255,0) 58%),
+    radial-gradient(90% 110% at 100% 100%, rgba(0,0,0,.28), rgba(0,0,0,0) 62%),
+    linear-gradient(135deg,
+      color-mix(in srgb, var(--g1,#4f46e5) 91%, #64748b) 0%,
+      color-mix(in srgb, var(--g2,#7c3aed) 91%, #64748b) 62%,
+      color-mix(in srgb, var(--g2,#7c3aed) 66%, #0f172a) 100%);
+  box-shadow:var(--sh2); border:0;
+}
+/* 위쪽에 얇게 깔리는 광택 — 카드가 한 겹 더 있어 보인다 */
+.hcard::before{
+  content:''; position:absolute; inset:0 0 auto; height:52%; pointer-events:none;
+  background:linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,0));
+}
+@media(max-width:640px){.hcard{flex:0 0 84%}}
+.hcard::after{
+  content:''; position:absolute; right:-26px; bottom:-34px; font-size:120px; opacity:.16;
+  content:attr(data-emoji); line-height:1;
+}
+.hcard:hover{transform:translateY(-2px)}
+.hcard{transition:transform .16s ease}
+.hcard .hh{display:flex; align-items:center; gap:6px; font-size:11px; font-weight:700; opacity:.92; position:relative; z-index:1}
+.hcard .hh .rank{background:rgba(0,0,0,.28); padding:2px 8px; border-radius:999px}
+.hcard .ht{font-size:16.5px; font-weight:800; letter-spacing:-.4px; margin-top:9px; line-height:1.35;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; position:relative; z-index:1}
+.hcard .hc{margin-top:auto; display:flex; align-items:flex-end; justify-content:space-between; gap:10px; position:relative; z-index:1}
+.hcard .cd{font-size:26px; font-weight:800; letter-spacing:-1px; line-height:1}
+.hcard .cdl{font-size:10.5px; opacity:.85; margin-top:3px}
+.hcard .hp{text-align:right}
+.hcard .hp .now{font-size:19px; font-weight:800; letter-spacing:-.6px}
+.hcard .hp .was{font-size:11px; opacity:.8; text-decoration:line-through}
+.hcard .off{background:#fff; color:#111; font-size:11px; font-weight:800; padding:2px 8px; border-radius:999px; margin-left:6px}
+
+/* ══════════════════════════════════════════════════════════
+   5. 툴바 + 상품 그리드
+   ══════════════════════════════════════════════════════════ */
+.toolbar{
+  display:flex; align-items:center; gap:9px; flex-wrap:wrap; margin-bottom:15px;
+  padding:11px 14px; background:var(--surface); border:1px solid var(--line); border-radius:14px;
+}
+.toolbar .cnt{font-size:13px; font-weight:700}
+.toolbar .cnt b{color:var(--brand)}
+.toolbar .sp{margin-left:auto}
+.chipbtn{
+  font-size:12px; font-weight:600; padding:6px 11px; border-radius:9px;
+  border:1px solid var(--line); background:var(--surface2); color:var(--dim);
+}
+.chipbtn.on{background:var(--brand); border-color:var(--brand); color:#fff}
+.selbox{height:34px; padding:0 30px 0 11px; border-radius:9px; border:1px solid var(--line);
+  background:var(--surface2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238b95aa' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 11px center;
+  appearance:none; font-size:12.5px; font-weight:600; outline:none}
+
+.grid{display:grid; grid-template-columns:repeat(4,1fr); gap:14px}
+@media(max-width:1080px){.grid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:820px){.grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:520px){.grid{grid-template-columns:1fr}}
+
+/* 티켓 스텁 형태의 카드 — 좌우에 반원 노치를 파서 실제 표를 닮게 */
+.tk{
+  position:relative; background:var(--surface); border:1px solid var(--line);
+  border-radius:16px; overflow:hidden; cursor:pointer; text-align:left;
+  display:flex; flex-direction:column; box-shadow:var(--sh1);
+  transition:transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+}
+.tk:hover{transform:translateY(-3px); box-shadow:var(--sh2); border-color:var(--line2)}
+.tk.dead{opacity:.55}
+.tk .thumb{
+  height:96px; position:relative; overflow:hidden;   /* 이모지가 본문으로 새어 나가지 않게 */
+  display:flex; align-items:flex-start; justify-content:space-between;
+  padding:11px 12px; color:#fff;
+  /* 원색을 조금 눌러서 쨍한 느낌을 덜고, 위아래로 옅은 명암을 얹어 밋밋해지지 않게 */
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,0) 42%, rgba(0,0,0,.14)),
+    linear-gradient(135deg,
+      color-mix(in srgb, var(--g1) 86%, #64748b),
+      color-mix(in srgb, var(--g2) 86%, #64748b));
+}
+/* 워터마크처럼 — 썸네일 아래 모서리에서 직선으로 잘려 의도된 크롭으로 읽힌다 */
+.tk .thumb .emo{position:absolute; right:-4px; bottom:-16px; font-size:72px; opacity:.17; line-height:1}
+.tk .thumb .cate{font-size:11px; font-weight:800; background:rgba(0,0,0,.26); padding:3px 9px; border-radius:999px}
+.tk .thumb .dday{
+  font-size:11px; font-weight:800; background:#fff; color:#111; padding:3px 9px; border-radius:999px;
+}
+.tk .thumb .dday.hot{background:var(--hot); color:#fff}
+.tk .body{padding:12px 13px 0; flex:1}
+.tk .ttl{
+  font-size:14px; font-weight:700; letter-spacing:-.3px; line-height:1.4; min-height:39px;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
+.tk .subs{display:flex; gap:5px; flex-wrap:wrap; margin-top:8px; min-height:22px}
+.tk .cdrow{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  margin:11px 0 0; padding:7px 10px; border-radius:10px; background:var(--surface3);
+}
+.tk .cdrow .lb{font-size:10.5px; color:var(--dim2); font-weight:700}
+.tk .cdrow .cd{font-size:14.5px; font-weight:800; letter-spacing:-.4px; color:var(--u,var(--txt))}
+.tk .bar{height:3px; border-radius:3px; background:var(--line); overflow:hidden; margin-top:8px}
+.tk .bar i{display:block; height:100%; border-radius:3px; background:var(--u,var(--brand))}
+/* 절취선 + 노치 */
+.tk .perf{
+  position:relative; height:1px; margin:13px 0 0;
+  border-top:1.5px dashed color-mix(in srgb, var(--line2) 62%, transparent);
+}
+.tk .perf::before,.tk .perf::after{
+  content:''; position:absolute; top:-8px; width:16px; height:16px; border-radius:50%;
+  background:var(--bg); border:1px solid color-mix(in srgb, var(--line) 55%, transparent);
+}
+.tk .perf::before{left:-9px} .tk .perf::after{right:-9px}
+.tk .foot{padding:11px 13px 13px; display:flex; align-items:flex-end; justify-content:space-between; gap:8px}
+.tk .price .was{font-size:11px; color:var(--dim2); text-decoration:line-through}
+.tk .price .now{font-size:17.5px; font-weight:800; letter-spacing:-.6px; display:flex; align-items:baseline; gap:6px}
+.tk .price .now .off{font-size:12.5px; font-weight:800; color:var(--hot)}
+.tk .price .dep{font-size:10.5px; color:var(--dim2); margin-top:2px}
+.tk .seller{font-size:10.5px; color:var(--dim2); text-align:right; flex-shrink:0}
+.tk .seller .av{
+  width:22px; height:22px; border-radius:50%; display:inline-grid; place-items:center;
+  background:var(--surface3); color:var(--dim); font-size:10px; font-weight:800; margin-bottom:3px;
+}
+.blink{animation:bl 1.05s steps(1,end) infinite}
+@keyframes bl{50%{opacity:.3}}
+
+.skel{background:var(--surface); border:1px solid var(--line); border-radius:16px; height:296px; overflow:hidden; position:relative}
+.skel::after{content:''; position:absolute; inset:0; background:linear-gradient(90deg,transparent,rgba(125,140,180,.10),transparent); animation:sk 1.2s linear infinite}
+@keyframes sk{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+
+/* ══════════════════════════════════════════════════════════
+   6. 모달 · 드로어 · 토스트
+   ══════════════════════════════════════════════════════════ */
+.scrim{
+  position:fixed; inset:0; background:rgba(10,14,26,.5); backdrop-filter:blur(3px);
+  z-index:100; display:none; align-items:center; justify-content:center; padding:24px;
+}
+.scrim.on{display:flex}
+.modal{
+  background:var(--surface); border-radius:20px; width:100%; max-width:560px;
+  max-height:88vh; overflow:auto; box-shadow:var(--sh3); border:1px solid var(--line);
+  animation:pop .18s ease;
+}
+.modal.wide{max-width:760px}
+@keyframes pop{from{transform:translateY(14px) scale(.985); opacity:0}to{transform:none; opacity:1}}
+.mhead{
+  position:sticky; top:0; background:var(--surface); z-index:2;
+  display:flex; align-items:center; gap:10px; padding:16px 20px 13px; border-bottom:1px solid var(--line);
+}
+.mhead h3{margin:0; font-size:16.5px; font-weight:800; letter-spacing:-.4px}
+.mhead .x{margin-left:auto; width:32px; height:32px; border-radius:9px; display:grid; place-items:center; color:var(--dim); font-size:17px}
+.mhead .x:hover{background:var(--surface3); color:var(--txt)}
+.mbody{padding:18px 20px 22px}
+.mfoot{position:sticky; bottom:0; background:var(--surface); border-top:1px solid var(--line); padding:13px 20px; display:flex; gap:9px}
+
+.drawer{
+  position:fixed; top:0; right:0; bottom:0; width:390px; max-width:92vw; z-index:110;
+  background:var(--surface); border-left:1px solid var(--line); box-shadow:var(--sh3);
+  transform:translateX(100%); transition:transform .22s cubic-bezier(.3,.8,.3,1);
+  display:flex; flex-direction:column;
+}
+.drawer.on{transform:none}
+.drawer .dh{display:flex; align-items:center; gap:10px; padding:17px 18px; border-bottom:1px solid var(--line)}
+.drawer .dh h3{margin:0; font-size:16px; font-weight:800}
+.drawer .dl{flex:1; overflow:auto; padding:10px 14px 20px}
+.nrow{
+  display:flex; gap:11px; padding:12px 12px; border-radius:12px; border:1px solid transparent;
+  cursor:pointer; align-items:flex-start;
+}
+.nrow:hover{background:var(--surface2)}
+.nrow.unread{background:var(--brand-soft); border-color:transparent}
+.nrow .ni{font-size:17px; line-height:1.3}
+.nrow .nt{font-size:13px; font-weight:700}
+.nrow .nm{font-size:12px; color:var(--dim); margin-top:2px; line-height:1.5}
+.nrow .nd{font-size:10.5px; color:var(--dim2); margin-top:4px}
+
+#toasts{position:fixed; left:50%; bottom:26px; transform:translateX(-50%); z-index:200; display:flex; flex-direction:column; gap:8px; align-items:center}
+.toast{
+  background:var(--txt); color:var(--bg); font-size:13px; font-weight:600;
+  padding:11px 17px; border-radius:12px; box-shadow:var(--sh3); animation:tin .2s ease;
+  max-width:86vw; display:flex; gap:8px; align-items:center;
+}
+.toast.err{background:var(--hot); color:#fff}
+.toast.ok{background:var(--ok); color:#fff}
+@keyframes tin{from{transform:translateY(10px); opacity:0}to{transform:none; opacity:1}}
+
+/* ══════════════════════════════════════════════════════════
+   7. 상세 모달 내부
+   ══════════════════════════════════════════════════════════ */
+.dhero{
+  padding:20px 22px; color:#fff; position:relative; overflow:hidden;
+  background:
+    radial-gradient(110% 140% at 0% 0%, rgba(255,255,255,.18), rgba(255,255,255,0) 60%),
+    linear-gradient(135deg,
+      color-mix(in srgb, var(--g1) 89%, #64748b),
+      color-mix(in srgb, var(--g2) 89%, #64748b));
+}
+.dhero .emo{position:absolute; right:10px; bottom:-22px; font-size:104px; opacity:.16}
+.dhero .cate{font-size:11px; font-weight:800; background:rgba(0,0,0,.25); padding:3px 9px; border-radius:999px}
+.dhero h3{margin:10px 0 0; font-size:20px; font-weight:800; letter-spacing:-.6px; line-height:1.35; position:relative; z-index:1}
+.dhero .seat{margin-top:9px; display:flex; gap:6px; flex-wrap:wrap; position:relative; z-index:1}
+.dhero .seat span{background:rgba(255,255,255,.2); border:1px solid rgba(255,255,255,.32); font-size:11.5px; font-weight:700; padding:3px 9px; border-radius:7px}
+.dhero .dclose{
+  position:absolute; right:12px; top:12px; z-index:3; width:32px; height:32px; border-radius:10px;
+  display:grid; place-items:center; background:rgba(0,0,0,.24); color:#fff; cursor:pointer; font-size:14px;
+}
+.dhero .dclose:hover{background:rgba(0,0,0,.42)}
+
+.cdbig{
+  display:flex; align-items:center; gap:12px; padding:13px 16px; border-radius:14px;
+  background:var(--surface2); border:1px solid var(--line); margin-bottom:16px;
+}
+.cdbig .lb{font-size:11.5px; color:var(--dim); font-weight:700}
+.cdbig .cd{font-size:27px; font-weight:800; letter-spacing:-1.2px; color:var(--u,var(--txt)); line-height:1.1}
+.cdbig .rt{margin-left:auto; text-align:right}
+.cdbig .rt .p{font-size:22px; font-weight:800; letter-spacing:-.8px}
+.cdbig .rt .w{font-size:11.5px; color:var(--dim2); text-decoration:line-through}
+.cdbig .rt .o{color:var(--hot); font-weight:800; font-size:12.5px; margin-left:5px}
+
+.kv{display:grid; grid-template-columns:repeat(2,1fr); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:13px; overflow:hidden}
+.kv > div{background:var(--surface); padding:11px 13px}
+.kv .k{font-size:11px; color:var(--dim2); font-weight:600}
+.kv .v{font-size:13.5px; font-weight:700; margin-top:2px}
+.kv .full{grid-column:1/-1}
+
+.gauge{margin-top:16px; padding:14px 15px; border-radius:13px; border:1px solid var(--line); background:var(--surface2)}
+.gauge .gh{display:flex; align-items:baseline; gap:8px; font-size:12.5px; font-weight:700}
+.gauge .gh .tagv{margin-left:auto; font-size:12px; font-weight:800}
+.gauge .track{height:8px; border-radius:5px; background:var(--line); margin:11px 0 6px; position:relative}
+.gauge .track i{position:absolute; top:0; bottom:0; left:0; border-radius:5px; background:linear-gradient(90deg,var(--ok),var(--brand))}
+.gauge .track .mk{position:absolute; top:-4px; width:2px; height:16px; background:var(--txt); border-radius:2px}
+.gauge .gl{display:flex; justify-content:space-between; font-size:10.5px; color:var(--dim2)}
+.gauge .why{font-size:11.5px; color:var(--dim2); margin-top:8px; line-height:1.55}
+
+.flow{display:flex; align-items:center; gap:6px; margin:16px 0 4px}
+.flow .st{
+  flex:1; text-align:center; font-size:11px; font-weight:700; padding:7px 4px; border-radius:9px;
+  background:var(--surface2); color:var(--dim2); border:1px solid var(--line);
+}
+.flow .st.on{background:var(--brand); color:#fff; border-color:transparent}
+.flow .st.done{background:var(--ok-soft); color:var(--ok); border-color:transparent}
+.flow .ar{color:var(--dim2); font-size:10px}
+
+/* ══════════════════════════════════════════════════════════
+   8. 마이페이지 · 리포트 · 운영
+   ══════════════════════════════════════════════════════════ */
+.mysplit{display:grid; grid-template-columns:280px 1fr; gap:16px; align-items:start}
+@media(max-width:880px){.mysplit{grid-template-columns:1fr}}
+.profile{padding:20px; text-align:center}
+.profile .av{
+  width:62px; height:62px; border-radius:20px; margin:0 auto 10px; display:grid; place-items:center;
+  background:linear-gradient(135deg,var(--brand),var(--brand2)); color:#fff; font-size:24px; font-weight:800;
+}
+.profile .id{font-size:17px; font-weight:800; letter-spacing:-.4px}
+.profile .since{font-size:11.5px; color:var(--dim2); margin-top:2px}
+.profile .bal{margin:14px 0 12px; padding:13px; border-radius:13px; background:var(--surface2); border:1px solid var(--line)}
+.profile .bal .l{font-size:11px; color:var(--dim); font-weight:700}
+.profile .bal .v{font-size:24px; font-weight:800; letter-spacing:-1px; margin-top:2px}
+.mstats{display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--line); border-top:1px solid var(--line)}
+.mstats > div{background:var(--surface); padding:12px 4px; text-align:center}
+.mstats .v{font-size:17px; font-weight:800}
+.mstats .l{font-size:10.5px; color:var(--dim2); margin-top:1px}
+
+.subtabs{display:flex; gap:4px; padding:6px; background:var(--surface3); border-radius:13px; margin-bottom:14px; overflow-x:auto}
+.subtabs button{padding:8px 14px; border-radius:9px; font-size:13px; font-weight:700; color:var(--dim); white-space:nowrap}
+.subtabs button.on{background:var(--surface); color:var(--txt); box-shadow:var(--sh1)}
+
+.lrow{
+  display:flex; align-items:center; gap:12px; padding:13px 15px; border-bottom:1px solid var(--line);
+}
+.lrow:last-child{border-bottom:0}
+.lrow .ic{width:36px; height:36px; border-radius:11px; display:grid; place-items:center; font-size:17px; background:var(--surface3); flex-shrink:0}
+.lrow .ic.cat-ic{
+  color:#fff;
+  background:linear-gradient(135deg,
+    color-mix(in srgb, var(--g1) 86%, #64748b),
+    color-mix(in srgb, var(--g2) 86%, #64748b));
+}
+.lrow .m{flex:1; min-width:0}
+.lrow .m .t{font-size:13.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.lrow .m .s{font-size:11.5px; color:var(--dim2); margin-top:2px}
+.lrow .r{text-align:right; flex-shrink:0}
+.lrow .r .a{font-size:14px; font-weight:800; letter-spacing:-.4px}
+.lrow .r .a.plus{color:var(--ok)} .lrow .r .a.minus{color:var(--hot)}
+.lrow .r .d{font-size:10.5px; color:var(--dim2); margin-top:2px}
+.lrow .acts2{display:flex; gap:6px; flex-shrink:0}
+
+.bar2{display:flex; align-items:center; gap:10px; margin-bottom:9px; font-size:12.5px}
+.bar2 .nm{width:78px; color:var(--dim); flex-shrink:0; font-weight:600}
+.bar2 .track{flex:1; height:18px; background:var(--surface3); border-radius:6px; overflow:hidden}
+.bar2 .fill{height:100%; background:linear-gradient(90deg,var(--brand),var(--hot)); border-radius:6px}
+.bar2 .pc{width:104px; text-align:right; color:var(--dim2); font-variant-numeric:tabular-nums; font-size:12px}
+.note{margin-top:12px; font-size:11.5px; color:var(--dim2); border-top:1px solid var(--line); padding-top:10px; line-height:1.6}
+
+pre{
+  background:var(--surface2); border:1px solid var(--line); border-radius:12px;
+  padding:13px 15px; font-size:11.5px; line-height:1.6; overflow:auto; max-height:330px;
+  margin:12px 0 0; white-space:pre-wrap; word-break:break-all; color:var(--dim);
+  font-family:'JetBrains Mono','D2Coding',Consolas,monospace;
+}
+.verdict{display:inline-flex; align-items:center; gap:7px; padding:7px 14px; border-radius:999px; font-size:12.5px; font-weight:800}
+.verdict.pass{background:var(--ok-soft); color:var(--ok)}
+.verdict.fail{background:var(--hot-soft); color:var(--hot)}
+.cmp{display:grid; grid-template-columns:1fr 1fr; gap:14px}
+@media(max-width:820px){.cmp{grid-template-columns:1fr}}
+.cmp h4{font-size:12.5px; margin:0; color:var(--dim); font-weight:700}
+
+footer{border-top:1px solid var(--line); background:var(--surface); padding:26px 0 34px; margin-top:20px}
+footer .wrap{display:flex; gap:20px; flex-wrap:wrap; align-items:center}
+footer .fb{font-size:13px; font-weight:800}
+footer .fl{display:flex; gap:14px; font-size:12px; color:var(--dim2); margin-left:auto; flex-wrap:wrap}
+footer .fl a:hover{color:var(--brand)}
+footer .cp{font-size:11.5px; color:var(--dim2); width:100%; margin-top:4px}
 </style>
 </head>
 <body>
-<div class="wrap">
 
-  <header>
-    <h1>PlanB Market</h1>
-    <span class="sub">소멸 모니터링 · <span id="tick" class="tick">—</span></span>
-    <div class="idbar">
-      <button id="btn-theme" title="SPEC 10장의 다크 테마로 전환">🌙 다크</button>
-      <select id="who">
-        <option value="">로그인 안 함</option>
-        <option>user01</option><option>user02</option><option>user03</option>
-        <option>user04</option><option>user05</option>
-      </select>
-      <button id="btn-login">로그인</button>
-      <span id="me" class="who"></span>
+<!-- ════════ 헤더 ════════ -->
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="#" onclick="go('market');return false">
+      <span class="mark">🎟️</span>
+      <span class="name">Plan<em>B</em> Market</span>
+    </a>
+    <nav class="navtabs" id="navtabs"></nav>
+    <div class="searchbox">
+      <span class="ico">🔍</span>
+      <input id="q" placeholder="공연·좌석·판매자 검색" autocomplete="off">
     </div>
-  </header>
-
-  <div class="cards">
-    <div class="card c-urgent"><div class="k">⏰ 만료 임박 <span class="chip">24h</span></div><div class="v" id="c-soon">—</div><div class="n">판매 중인데 곧 사라짐</div></div>
-    <div class="card c-loss"><div class="k">💀 오늘 실효</div><div class="v" id="c-exp">—</div><div class="n" id="c-loss">—</div></div>
-    <div class="card c-wait"><div class="k">🤝 예약 중</div><div class="v" id="c-res">—</div><div class="n" id="c-esc">—</div></div>
-    <div class="card c-money"><div class="k">💰 누적 거래액</div><div class="v" id="c-amt">—</div><div class="n" id="c-cnt">—</div></div>
+    <div class="acts" id="acts"></div>
   </div>
+</header>
 
-  <section>
-    <h2>⚠️ 판매 중 · 잔여시간 순 <span class="sub">— 행을 누르면 좌석·추천가·예약 현황이 펼쳐집니다</span></h2>
-    <div class="panel">
-      <div class="tabs" id="tabs"></div>
-      <div class="rows" id="rows"><div class="empty">불러오는 중…</div></div>
-    </div>
-  </section>
-
-  <section class="charts">
-    <div>
-      <h2>📊 카테고리별 실효율</h2>
-      <div class="panel" id="chart-cat"><div class="empty">불러오는 중…</div></div>
-    </div>
-    <div>
-      <h2>📉 일별 실효 손실 (7일)</h2>
-      <div class="panel" id="chart-loss"><div class="empty">불러오는 중…</div></div>
-    </div>
-  </section>
-
-  <section>
-    <h2>🔍 검증</h2>
-    <div class="panel">
-      <div class="btns">
-        <button class="btn-p" id="btn-integ">정합성 검증</button>
-        <span id="integ-badge"></span>
-      </div>
-      <pre id="integ-out" hidden></pre>
-    </div>
-  </section>
-
-  <section>
-    <h2>⚡ 동시성 테스트 — 판매 4번에 20개 스레드 동시 예약</h2>
-    <div class="panel">
-      <div class="btns">
-        <button class="btn-d" id="btn-nolock">락 없이 20건 발사</button>
-        <button class="btn-p" id="btn-lock">락 적용 20건 발사</button>
-        <span id="conc-note" class="sub"></span>
-      </div>
-      <div class="cmp">
-        <div><h3>락 없음</h3><pre id="out-nolock" hidden></pre></div>
-        <div><h3>락 적용</h3><pre id="out-lock" hidden></pre></div>
-      </div>
-    </div>
-  </section>
-
-  <div class="foot">
-    <a href="/swagger-ui.html">Swagger</a> ·
-    <a href="/h2-console">H2</a> ·
-    <a href="/actuator/health">Health</a> ·
-    <a href="/actuator/metrics/planb.escrow.confirmed">Metrics</a>
+<!-- ════════ 실시간 소멸 티커 ════════ -->
+<div class="ticker">
+  <div class="wrap">
+    <span class="lead">LIVE 소멸중</span>
+    <div class="lane"><div class="train" id="train"></div></div>
   </div>
 </div>
+
+<!-- ════════ 카테고리 ════════ -->
+<div class="catbar" id="catbar"><div class="wrap" id="cats"></div></div>
+
+<main class="wrap" id="view"></main>
+
+<footer>
+  <div class="wrap">
+    <span class="fb">🎟️ PlanB Market</span>
+    <span class="muted" style="font-size:12px">소멸성 자산 P2P 양도 플랫폼 · 에스크로 안전거래</span>
+    <span class="fl">
+      <a href="/swagger-ui.html" target="_blank">API 문서</a>
+      <a href="/h2-console" target="_blank">H2 콘솔</a>
+      <a href="/actuator/health" target="_blank">Health</a>
+      <a href="/actuator/prometheus" target="_blank">Metrics</a>
+      <a href="#" onclick="toggleTheme();return false" id="theme-link">🌙 다크 모드</a>
+    </span>
+    <span class="cp">© 2026 PlanB Market · 데모 환경입니다. 결제는 예치금으로만 이뤄지며 실제 금전 거래가 발생하지 않습니다.</span>
+  </div>
+</footer>
+
+<div class="scrim" id="scrim"><div class="modal" id="modal"></div></div>
+<div class="drawer" id="drawer">
+  <div class="dh">
+    <h3>🔔 알림</h3>
+    <button class="btn sm" onclick="markAllRead()">모두 읽음</button>
+    <button class="iconbtn" style="width:32px;height:32px" onclick="closeDrawer()">✕</button>
+  </div>
+  <div class="dl" id="notif-list"></div>
+</div>
+<div id="toasts"></div>
 
 <script>
 'use strict';
 
-/* ─────────────────────────────────────────────────────────
-   공통
-   ───────────────────────────────────────────────────────── */
-const $ = id => document.getElementById(id);
+/* ═══════════════════════════════════════════════════════════
+   0. 유틸
+   ═══════════════════════════════════════════════════════════ */
+const $  = id => document.getElementById(id);
 const won = n => (n ?? 0).toLocaleString('ko-KR') + '원';
 const num = n => (n ?? 0).toLocaleString('ko-KR');
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const j = o => JSON.stringify(o, null, 2);
 
-// 실패해도 화면 전체가 죽지 않게 한다. 폴링이 5초마다 도는데
-// 한 번의 네트워크 오류로 대시보드가 멈추면 모니터링이라 부를 수 없다
+/**
+ * 실패해도 화면 전체가 죽지 않게 감싼다. 폴링이 5초마다 도는데
+ * 한 번의 네트워크 오류로 대시보드가 멈추면 모니터링이라 부를 수 없다.
+ */
 async function api(path, opts) {
   try {
-    const r = await fetch(path, Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts));
-    const body = await r.json().catch(() => null);
-    return { ok: r.ok, status: r.status, body: body && body.body, raw: body };
+    const r = await fetch(path, Object.assign(
+      { headers: { 'Content-Type': 'application/json' } }, opts));
+    const raw = await r.json().catch(() => null);
+    return { ok: r.ok, status: r.status, body: raw && raw.body, msg: raw && raw.message, raw };
   } catch (e) {
-    return { ok: false, status: 0, body: null, raw: { message: String(e) } };
+    return { ok: false, status: 0, body: null, msg: '서버에 연결할 수 없습니다', raw: null };
   }
 }
+const post = (p, b) => api(p, { method: 'POST', body: b ? JSON.stringify(b) : undefined });
+const del  = p      => api(p, { method: 'DELETE' });
+const patch= p      => api(p, { method: 'PATCH' });
 
-function esc(s) {
-  return String(s ?? '').replace(/[&<>"']/g, c =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function toast(msg, kind) {
+  const el = document.createElement('div');
+  el.className = 'toast' + (kind ? ' ' + kind : '');
+  el.innerHTML = (kind === 'err' ? '⚠️ ' : kind === 'ok' ? '✅ ' : '') + esc(msg);
+  $('toasts').appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .25s'; }, 2600);
+  setTimeout(() => el.remove(), 2900);
+}
+/** 실패 응답을 사람이 읽을 문장으로 */
+function fail(r, fallback) {
+  toast(r.msg || fallback || '요청을 처리하지 못했습니다', 'err');
 }
 
-/* ─────────────────────────────────────────────────────────
-   테마 — SPEC 10장은 다크였지만 기본은 밝은 쪽
-   ───────────────────────────────────────────────────────── */
-$('btn-theme').onclick = () => {
+/* ═══════════════════════════════════════════════════════════
+   1. 도메인 상수
+   ═══════════════════════════════════════════════════════════ */
+const CATS = [
+  ['',           '전체',     '🎫', '#4f46e5', '#7c3aed'],
+  ['MOVIE',      '영화',     '🎬', '#6366f1', '#8b5cf6'],
+  ['CONCERT',    '콘서트',   '🎤', '#ec4899', '#f43f5e'],
+  ['SPORTS',     '스포츠',   '⚾', '#059669', '#10b981'],
+  ['EXHIBITION', '전시·팝업','🖼️', '#f59e0b', '#f97316'],
+  ['TRAIN',      '기차',     '🚄', '#0ea5e9', '#2563eb'],
+  ['FLIGHT',     '항공',     '✈️', '#06b6d4', '#0891b2'],
+  ['HOTEL',      '호텔',     '🏨', '#8b5cf6', '#6d28d9'],
+  ['GIFTICON',   '기프티콘', '🎁', '#f43f5e', '#fb923c'],
+];
+const CAT = Object.fromEntries(CATS.map(c => [c[0], { label: c[1], emo: c[2], g1: c[3], g2: c[4] }]));
+const catOf = k => CAT[k] || CAT[''];
+
+const LISTING_LABEL = { OPEN:'판매중', RESERVED:'예약중', IN_ESCROW:'결제완료', COMPLETED:'거래완료', WITHDRAWN:'철회', EXPIRED:'만료' };
+const ESCROW_LABEL  = { HOLDING:'에스크로 보관 중', CONFIRMED:'거래 확정', REFUNDED:'환불됨', VOIDED:'무효' };
+const DEPOSIT_LABEL = { HELD:'예약 진행 중', CAPTURED:'결제에 충당됨', FORFEITED:'몰수됨', RELEASED:'전액 환불됨' };
+const TICKET_LABEL  = { OWNED:'보유 중', LISTED:'판매 등록됨', TRANSFERRED:'양도 완료', EXPIRED:'실효' };
+const NOTI_ICON = {
+  EXPIRY_WARNING:'⏰', PAYMENT_DEADLINE:'⏳', DEPOSIT_FORFEITED:'💸', RESERVATION_EXPIRED:'⌛',
+  TICKET_EXPIRED:'💀', ESCROW_CONFIRMED:'✅', LISTING_WITHDRAWN:'🏷️'
+};
+const LEDGER_LABEL = {
+  CHARGE:'예치금 충전', DEPOSIT_HOLD:'예약금 홀드', DEPOSIT_CAPTURE:'예약금 결제 충당',
+  DEPOSIT_FORFEIT:'예약금 몰수', DEPOSIT_RELEASE:'예약금 환불', PURCHASE:'구매 결제',
+  ESCROW_REFUND:'에스크로 환불', COMMISSION:'중개 수수료', SELLER_SETTLE:'판매 정산'
+};
+
+/* ═══════════════════════════════════════════════════════════
+   2. 상태
+   ═══════════════════════════════════════════════════════════ */
+const S = {
+  view: 'market',
+  mysub: 'purchase',
+  me: null,             // { id, balance }
+  cat: '',
+  sort: 'expiry',
+  q: '',
+  urgentOnly: false,
+  listings: [],
+  summary: null,
+  skewMs: 0,            // 서버 시각 - 브라우저 시각
+  detailId: null,
+  detailCache: {},
+  unread: 0,
+  notifs: [],
+  loading: true,
+  myData: {},           // 마이페이지 탭별 데이터
+};
+
+/* 서버 시각 기준으로 보정한 잔여 밀리초 */
+const remain = iso => new Date(iso).getTime() - (Date.now() + S.skewMs);
+
+/** 긴급도 → 색·라벨. 2시간 미만은 점멸까지 */
+function urgency(ms) {
+  if (ms <= 0)           return { c:'var(--dim2)', blink:false, label:'만료됨',   short:'만료', hot:true  };
+  if (ms < 2*3600e3)     return { c:'var(--hot)',  blink:true,  label:'초급박',   short:hhmm(ms), hot:true  };
+  if (ms < 12*3600e3)    return { c:'var(--warn)', blink:false, label:'오늘 마감', short:hhmm(ms), hot:true  };
+  if (ms < 72*3600e3)    return { c:'var(--info)', blink:false, label:'마감 임박', short:dday(ms), hot:false };
+  return                        { c:'var(--ok)',   blink:false, label:'여유',     short:dday(ms), hot:false };
+}
+const dday = ms => 'D-' + Math.max(1, Math.ceil(ms / 86400e3));
+const hhmm = ms => {
+  const s = Math.floor(ms/1000);
+  return String(Math.floor(s/3600)).padStart(2,'0') + ':' + String(Math.floor(s%3600/60)).padStart(2,'0');
+};
+function fmtCd(ms) {
+  if (ms <= 0) return '만료됨';
+  const s = Math.floor(ms/1000);
+  const d = Math.floor(s/86400);
+  const h = String(Math.floor(s%86400/3600)).padStart(2,'0');
+  const m = String(Math.floor(s%3600/60)).padStart(2,'0');
+  const sec = String(s%60).padStart(2,'0');
+  return d > 0 ? d + '일 ' + h + ':' + m + ':' + sec : h + ':' + m + ':' + sec;
+}
+/** 72시간을 창으로 잡은 소진 게이지 — 0%면 다 썼다는 뜻 */
+const lifeBar = ms => Math.max(0, Math.min(100, ms / (72*3600e3) * 100));
+const dt  = iso => iso ? new Date(iso).toLocaleString('ko-KR', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+const dtf = iso => iso ? new Date(iso).toLocaleString('ko-KR') : '—';
+const discount = l => (l.ticket && l.ticket.originalPrice)
+  ? Math.round((1 - l.askingPrice / l.ticket.originalPrice) * 100) : 0;
+
+/* ═══════════════════════════════════════════════════════════
+   3. 테마
+   ═══════════════════════════════════════════════════════════ */
+function toggleTheme() {
   const root = document.documentElement;
   const dark = root.getAttribute('data-theme') === 'dark';
   root.setAttribute('data-theme', dark ? 'light' : 'dark');
-  $('btn-theme').textContent = dark ? '🌙 다크' : '☀️ 밝게';
-  loadCharts();   // SVG는 색을 그릴 때 박아 넣으므로 다시 그린다
+  $('theme-link').textContent = dark ? '🌙 다크 모드' : '☀️ 라이트 모드';
+  if (S.view === 'report') renderView();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   4. 헤더 · 카테고리
+   ═══════════════════════════════════════════════════════════ */
+const VIEWS = [['market','마켓'], ['my','마이페이지'], ['report','마켓 리포트'], ['ops','운영 검증']];
+
+function renderNav() {
+  $('navtabs').innerHTML = VIEWS.map(([v, l]) =>
+    `<button class="${S.view === v ? 'on' : ''}" onclick="go('${v}')">${l}</button>`).join('');
+
+  $('acts').innerHTML = S.me
+    ? `<button class="iconbtn" onclick="openDrawer()" title="알림">🔔${
+         S.unread ? `<span class="badge">${S.unread > 99 ? '99+' : S.unread}</span>` : ''}</button>
+       <div class="wallet" onclick="openCharge()" title="예치금 충전" style="cursor:pointer">
+         <span class="uid">${esc(S.me.id)}</span><b class="tnum">${num(S.me.balance)}</b>원
+       </div>
+       <button class="btn-sell" onclick="openSell()">판매하기</button>
+       <button class="iconbtn" onclick="logout()" title="로그아웃">⏻</button>`
+    : `<button class="btn-login" onclick="openLogin()">로그인</button>
+       <button class="btn-sell" onclick="openLogin()">판매하기</button>`;
+}
+
+function renderCats() {
+  $('cats').innerHTML = CATS.map(([v, l, e]) =>
+    `<button class="cat ${v === S.cat ? 'on' : ''}" onclick="pickCat('${v}')">
+       <span class="e">${e}</span>${l}</button>`).join('');
+  $('catbar').style.display = S.view === 'market' ? '' : 'none';
+}
+
+function pickCat(v) { S.cat = v; renderCats(); loadListings(); }
+function go(v) { S.view = v; S.q = ''; $('q').value = ''; renderNav(); renderCats(); renderView(); window.scrollTo({top:0}); }
+
+$('q').oninput = e => {
+  const v = e.target.value.trim();
+  if (S.view !== 'market') { S.view = 'market'; renderNav(); renderCats(); }
+  S.q = v;
+  renderView();
 };
 
-/* ─────────────────────────────────────────────────────────
-   잔여시간 — 이 화면의 주인공
-   ───────────────────────────────────────────────────────── */
-// 서버 시각과 브라우저 시각이 어긋나면 카운트다운이 통째로 밀린다.
-// 대시보드 요약에 checkedAt이 들어 있으니 그걸로 시차를 한 번 재서 보정한다
-let skewMs = 0;
-const remain = iso => new Date(iso).getTime() - (Date.now() + skewMs);
-
-/** 긴급도 → 색. 2시간 미만은 점멸까지 */
-function urgency(ms) {
-  if (ms <= 0)          return { c: 'var(--dim2)', blink: false, label: '만료' };
-  if (ms < 2 * 3600e3)  return { c: 'var(--red)',   blink: true,  label: '초급박' };
-  if (ms < 12 * 3600e3) return { c: 'var(--amber)', blink: false, label: '임박' };
-  if (ms < 72 * 3600e3) return { c: 'var(--cyan)',  blink: false, label: '여유 적음' };
-  return                       { c: 'var(--green)', blink: false, label: '여유' };
-}
-
-function fmt(ms) {
-  if (ms <= 0) return '만료됨';
-  const s = Math.floor(ms / 1000);
-  const d = Math.floor(s / 86400);
-  const h = String(Math.floor(s % 86400 / 3600)).padStart(2, '0');
-  const m = String(Math.floor(s % 3600 / 60)).padStart(2, '0');
-  const sec = String(s % 60).padStart(2, '0');
-  return d > 0 ? `${d}일 ${h}:${m}:${sec}` : `${h}:${m}:${sec}`;
-}
-
-/* ─────────────────────────────────────────────────────────
-   상단 카드
-   ───────────────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════
+   5. 데이터 로딩
+   ═══════════════════════════════════════════════════════════ */
 async function loadSummary() {
   const r = await api('/api/admin/dashboard-summary');
   if (!r.ok || !r.body) return;
-  const d = r.body;
-
-  skewMs = new Date(d.checkedAt).getTime() - Date.now();   // 서버 시각 기준으로 보정
-
-  $('c-soon').textContent = d.expiringSoonCount + '건';
-  $('c-exp').textContent  = d.expiredTodayCount + '건';
-  $('c-loss').textContent = d.expiredTodayLoss > 0 ? '−' + won(d.expiredTodayLoss) : '오늘 손실 없음';
-  $('c-res').textContent  = d.reservedCount + '건';
-  $('c-esc').textContent  = '에스크로 ' + d.inEscrowCount + '건 · ' + won(d.escrowPoolBalance) + ' 보관 중';
-  $('c-amt').textContent  = won(d.totalTradedAmount);
-  $('c-cnt').textContent  = '확정 ' + d.completedCount + '건 · 플랫폼 수익 ' + won(d.platformBalance);
-  $('tick').textContent   = new Date(d.checkedAt).toLocaleTimeString('ko-KR');
-}
-
-/* ─────────────────────────────────────────────────────────
-   판매 목록 + 드릴다운
-   ───────────────────────────────────────────────────────── */
-const CATS = [
-  ['', '전체'], ['MOVIE', '영화'], ['CONCERT', '콘서트'], ['SPORTS', '스포츠'],
-  ['EXHIBITION', '전시'], ['TRAIN', '기차'], ['FLIGHT', '항공'],
-  ['HOTEL', '호텔'], ['GIFTICON', '기프티콘'],
-];
-let cat = '';
-let listings = [];
-const openIds = new Set();     // 폴링으로 다시 그려도 펼친 상태가 유지되게
-const detailCache = {};        // 추천가·예약 현황은 펼칠 때 한 번만 부른다
-
-function renderTabs() {
-  $('tabs').innerHTML = '';
-  CATS.forEach(([v, label]) => {
-    const b = document.createElement('span');
-    b.className = 'tab' + (v === cat ? ' on' : '');
-    b.textContent = label;
-    b.onclick = () => { cat = v; renderTabs(); loadListings(); };
-    $('tabs').appendChild(b);
-  });
+  S.summary = r.body;
+  S.skewMs = new Date(r.body.checkedAt).getTime() - Date.now();
+  if (S.view === 'market') paintKpis();
 }
 
 async function loadListings() {
-  const q = '/api/listings/list?count=40&sort=expiry' + (cat ? '&category=' + cat : '');
+  const q = '/api/listings/list?count=60&sort=' + S.sort + (S.cat ? '&category=' + S.cat : '');
   const r = await api(q);
-  listings = (r.ok && r.body && r.body.list) ? r.body.list : [];
-  renderRows();
+  S.listings = (r.ok && r.body && r.body.list) ? r.body.list : [];
+  S.loading = false;
+  if (S.view === 'market') { paintTicker(); paintHero(); paintGrid(); }
 }
 
-/** 좌석 문자열을 알약으로 쪼갠다. "27A, 27B" → [27A][27B] */
-function seatPills(seatInfo) {
-  if (!seatInfo) return '';
-  const parts = String(seatInfo).split(/\s*,\s*/).filter(Boolean);
-  return '<div class="seatbox">' +
-    parts.map(p => '<span class="seatpill">' + esc(p) + '</span>').join('') + '</div>';
+/**
+ * 응답을 기다리는 사이에 로그아웃이 끼어들 수 있다 (5초 폴링 × 사용자 조작).
+ * await를 건널 때마다 내가 아직 같은 사람인지 다시 확인한다.
+ */
+async function loadMe() {
+  if (!S.me) return;
+  const who = S.me.id;
+  const r = await api('/api/members/' + who);
+  if (!S.me || S.me.id !== who) return;
+  if (r.ok && r.body) { S.me.balance = r.body.balance; S.me.tickets = r.body.tickets; }
+
+  const n = await api('/api/members/' + who + '/notifications/unread-count');
+  if (!S.me || S.me.id !== who) return;
+  if (n.ok) S.unread = n.body ?? 0;
+  renderNav();
 }
 
-function renderRows() {
-  const box = $('rows');
-  if (!listings.length) {
-    box.innerHTML = '<div class="empty">해당 조건에 판매 중인 티켓이 없습니다.</div>';
+/** 화면에 보이는 것만 골라 갱신한다. 5초마다 전 화면을 다시 그리면 조작이 튄다 */
+function refresh() {
+  loadSummary();
+  if (S.view === 'market') loadListings();
+  if (S.me) loadMe();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   6. 뷰 라우팅
+   ═══════════════════════════════════════════════════════════ */
+function renderView() {
+  if (S.view === 'market') return viewMarket();
+  if (S.view === 'my')     return viewMy();
+  if (S.view === 'report') return viewReport();
+  if (S.view === 'ops')    return viewOps();
+}
+
+/* ── 6-1. 마켓 ─────────────────────────────────────────── */
+function viewMarket() {
+  $('view').innerHTML = `
+    <div class="kpis" id="kpis"></div>
+
+    <section class="sec" id="hero-sec">
+      <div class="sec-h">
+        <h2>🔥 지금 가장 급한 매물</h2>
+        <span class="desc">놓치면 그대로 사라집니다 — 잔여시간이 짧은 순</span>
+      </div>
+      <div class="herowrap" id="herowrap">
+        <button class="harrow l" onclick="heroScroll(-1)" aria-label="이전">‹</button>
+        <div class="hero" id="hero" onscroll="heroEdge()"></div>
+        <button class="harrow r" onclick="heroScroll(1)" aria-label="다음">›</button>
+      </div>
+    </section>
+
+    <section class="sec">
+      <div class="sec-h">
+        <h2 id="grid-title">전체 매물</h2>
+        <span class="desc">에스크로로 보호되는 안전거래</span>
+      </div>
+      <div class="toolbar">
+        <span class="cnt">총 <b id="cnt">0</b>건</span>
+        <button class="chipbtn ${S.urgentOnly ? 'on' : ''}" onclick="S.urgentOnly=!S.urgentOnly;renderView()">⏰ 24시간 내 마감만</button>
+        <span class="pill ok">🛡 결제금 에스크로 보관</span>
+        <span class="pill brand">↩ 10분 내 전액 환불</span>
+        <span class="sp"></span>
+        <select class="selbox" onchange="S.sort=this.value;loadListings()">
+          <option value="expiry" ${S.sort==='expiry'?'selected':''}>마감 임박순</option>
+          <option value="price"  ${S.sort==='price' ?'selected':''}>낮은 가격순</option>
+          <option value="recent" ${S.sort==='recent'?'selected':''}>최근 등록순</option>
+        </select>
+      </div>
+      <div class="grid" id="grid"></div>
+    </section>`;
+  paintKpis(); paintTicker(); paintHero(); paintGrid();
+}
+
+function paintKpis() {
+  const box = $('kpis'); if (!box) return;
+  const d = S.summary;
+  if (!d) { box.innerHTML = ''; return; }
+  box.innerHTML = `
+    <div class="kpi k-hot">
+      <div class="k">⏰ 24시간 내 소멸 <span class="pill hot">긴급</span></div>
+      <div class="v tnum">${num(d.expiringSoonCount)}<small>건</small></div>
+      <div class="n">지금 안 팔면 값이 0이 됩니다</div>
+    </div>
+    <div class="kpi k-warn">
+      <div class="k">💀 오늘 사라진 돈</div>
+      <div class="v tnum">${d.expiredTodayLoss > 0 ? '−' + num(d.expiredTodayLoss) : '0'}<small>원</small></div>
+      <div class="n">실효 ${num(d.expiredTodayCount)}건 · 아무도 잘못하지 않았는데 사라진 금액</div>
+    </div>
+    <div class="kpi k-brand">
+      <div class="k">🤝 거래 진행 중</div>
+      <div class="v tnum">${num(d.reservedCount + d.inEscrowCount)}<small>건</small></div>
+      <div class="n">예약 ${num(d.reservedCount)} · 에스크로 ${num(d.inEscrowCount)} · ${won(d.escrowPoolBalance)} 보관 중</div>
+    </div>
+    <div class="kpi k-ok">
+      <div class="k">💰 누적 거래액</div>
+      <div class="v tnum">${num(d.totalTradedAmount)}<small>원</small></div>
+      <div class="n">확정 ${num(d.completedCount)}건 · 판매 가능 ${num(d.openListingCount)}건</div>
+    </div>`;
+}
+
+function paintTicker() {
+  const live = S.listings
+    .filter(l => remain(l.ticket.expiresAt) > 0)
+    .slice(0, 14);
+  const items = live.length ? live : S.listings.slice(0, 8);
+  const html = items.map(l => {
+    const c = catOf(l.ticket.category);
+    return `<span class="it">${c.emo} <b>${esc(l.ticket.title)}</b>
+      <span class="c" data-exp="${l.ticket.expiresAt}">${fmtCd(remain(l.ticket.expiresAt))}</span> 남음
+      · ${won(l.askingPrice)}</span>`;
+  }).join('');
+  // 끊김 없이 이어지도록 두 벌을 붙인다
+  $('train').innerHTML = html + html;
+}
+
+function paintHero() {
+  const box = $('hero'); if (!box) return;
+  const top = S.listings
+    .filter(l => remain(l.ticket.expiresAt) > 0 && l.status === 'OPEN')
+    .sort((a, b) => remain(a.ticket.expiresAt) - remain(b.ticket.expiresAt))
+    .slice(0, 8);
+  if (!top.length) { $('hero-sec').style.display = 'none'; return; }
+  $('hero-sec').style.display = '';
+  const keep = box.scrollLeft;              // 5초 폴링으로 다시 그려도 보던 자리를 유지한다
+  box.innerHTML = top.map((l, i) => {
+    const t = l.ticket, c = catOf(t.category), ms = remain(t.expiresAt), off = discount(l);
+    return `<button class="hcard" data-emoji="${c.emo}" style="--g1:${c.g1};--g2:${c.g2}" onclick="openDetail(${l.id})">
+      <div class="hh"><span class="rank">TOP ${i+1}</span><span>${c.emo} ${c.label}</span>
+        ${t.seatInfo ? `<span>· ${esc(t.seatInfo)}</span>` : ''}</div>
+      <div class="ht">${esc(t.title)}</div>
+      <div class="hc">
+        <div>
+          <div class="cd tnum" data-exp="${t.expiresAt}">${fmtCd(ms)}</div>
+          <div class="cdl">뒤 소멸</div>
+        </div>
+        <div class="hp">
+          <div class="was">${won(t.originalPrice)}</div>
+          <div class="now">${won(l.askingPrice)}${off > 0 ? `<span class="off">${off}%↓</span>` : ''}</div>
+        </div>
+      </div>
+    </button>`;
+  }).join('');
+  // 다시 그리면 스크롤이 0으로 돌아간다. smooth를 잠깐 꺼서 튀지 않게 되돌린다
+  box.style.scrollBehavior = 'auto';
+  box.scrollLeft = keep;
+  box.style.scrollBehavior = '';
+  heroEdge();
+}
+
+/** 좌우 화살표 — 카드 한 장 폭만큼 민다 */
+function heroScroll(dir) {
+  const box = $('hero'); if (!box) return;
+  const card = box.querySelector('.hcard');
+  const step = card ? card.offsetWidth + 13 : box.clientWidth * .8;
+  box.scrollBy({ left: dir * step, behavior: 'smooth' });
+}
+/** 양끝 페이드·화살표는 더 볼 게 있을 때만 나타난다 */
+function heroEdge() {
+  const box = $('hero'), wrap = $('herowrap');
+  if (!box || !wrap) return;
+  const max = box.scrollWidth - box.clientWidth;
+  wrap.classList.toggle('more-l', box.scrollLeft > 4);
+  wrap.classList.toggle('more-r', box.scrollLeft < max - 4);
+}
+window.addEventListener('resize', heroEdge);
+
+function visibleListings() {
+  let arr = S.listings.slice();
+  if (S.q) {
+    const k = S.q.toLowerCase();
+    arr = arr.filter(l =>
+      (l.ticket.title || '').toLowerCase().includes(k) ||
+      (l.ticket.seatInfo || '').toLowerCase().includes(k) ||
+      (l.sellerId || '').toLowerCase().includes(k) ||
+      (l.ticket.categoryName || '').includes(S.q));
+  }
+  if (S.urgentOnly) arr = arr.filter(l => { const m = remain(l.ticket.expiresAt); return m > 0 && m < 24*3600e3; });
+  return arr;
+}
+
+function paintGrid() {
+  const box = $('grid'); if (!box) return;
+  if (S.loading) {
+    box.innerHTML = Array.from({length:8}, () => '<div class="skel"></div>').join('');
     return;
   }
-  box.innerHTML = '';
-  listings.forEach(l => {
-    const t = l.ticket || {};           // 티켓 정보는 listing 아래 중첩돼서 온다
-    const ms = remain(t.expiresAt);
-    const u = urgency(ms);
-    const isOpen = openIds.has(l.id);
+  const arr = visibleListings();
+  const t = $('cnt'); if (t) t.textContent = num(arr.length);
+  const gt = $('grid-title');
+  if (gt) gt.textContent = (S.cat ? catOf(S.cat).emo + ' ' + catOf(S.cat).label : '전체') + ' 매물'
+    + (S.q ? ` — "${S.q}" 검색 결과` : '');
 
-    const item = document.createElement('div');
-    item.className = 'item' + (isOpen ? ' open' : '');
-    item.style.setProperty('--u', u.c);
-    item.innerHTML =
-      '<div class="row">' +
-        '<span class="caret">▶</span>' +
-        '<div class="t">' +
-          '<div class="title">' + esc(t.title) +
-            (t.seatInfo ? '<span class="chip seat">' + esc(t.seatInfo) + '</span>' : '') +
-            (t.mileage ? '<span class="chip mile">✈ ' + num(t.mileage) + 'M</span>' : '') +
-          '</div>' +
-          '<div class="meta">' + esc(t.categoryName || t.category) + ' · ' + esc(l.status) +
-            ' · ' + (t.quantity ?? 1) + '매 · 판매자 ' + esc(l.sellerId) +
-            ' · ' + u.label + '</div>' +
-        '</div>' +
-        '<div class="price">' + won(l.askingPrice) +
-          '<div class="off">정가 ' + won(t.originalPrice) + '</div></div>' +
-        '<div class="cd' + (u.blink ? ' blink' : '') + '" data-exp="' + t.expiresAt + '">' + fmt(ms) + '</div>' +
-      '</div>' +
-      '<div class="detail" id="d-' + l.id + '">' +
-        (isOpen ? detailHtml(l) : '') +
-      '</div>';
-
-    item.querySelector('.row').onclick = () => toggle(l);
-    box.appendChild(item);
-  });
-}
-
-function toggle(l) {
-  if (openIds.has(l.id)) {
-    openIds.delete(l.id);
-    renderRows();
+  if (!arr.length) {
+    box.innerHTML = `<div class="empty" style="grid-column:1/-1">
+      <span class="big">🎫</span>조건에 맞는 매물이 없습니다.<br>
+      <span style="font-size:12px">카테고리를 바꾸거나 검색어를 지워보세요.</span></div>`;
     return;
   }
-  openIds.add(l.id);
-  renderRows();
-  loadDetail(l);            // 추천가·예약 현황을 채워 넣는다
+  box.innerHTML = arr.map(cardHtml).join('');
 }
 
-/** 펼칠 때 한 번만 부른다. 폴링마다 부르면 5초마다 요청이 쏟아진다 */
-async function loadDetail(l) {
-  const t = l.ticket || {};
-  const [sug, res] = await Promise.all([
-    api('/api/analysis/price-suggestion?ticketId=' + t.id),
-    api('/api/listings/' + l.id + '/reserve'),
-  ]);
-  detailCache[l.id] = {
-    suggestion: sug.ok ? sug.body : null,
-    reservation: res.ok ? res.body : null,
-    reservationStatus: res.status,
-  };
-  const el = $('d-' + l.id);
-  if (el) el.innerHTML = detailHtml(l);
+function cardHtml(l) {
+  const t = l.ticket, c = catOf(t.category);
+  const ms = remain(t.expiresAt), u = urgency(ms), off = discount(l);
+  const dead = ms <= 0;
+  const reserved = l.status === 'RESERVED';
+  return `<button class="tk ${dead ? 'dead' : ''}" style="--g1:${c.g1};--g2:${c.g2};--u:${u.c}" onclick="openDetail(${l.id})">
+    <div class="thumb">
+      <span class="cate">${c.emo} ${c.label}</span>
+      <span class="dday ${u.hot ? 'hot' : ''}">${dead ? '만료' : u.short}</span>
+      <span class="emo">${c.emo}</span>
+    </div>
+    <div class="body">
+      <div class="ttl">${esc(t.title)}</div>
+      <div class="subs">
+        ${t.seatInfo ? `<span class="pill">💺 ${esc(t.seatInfo)}</span>` : ''}
+        ${t.quantity > 1 ? `<span class="pill">${t.quantity}매 일괄</span>` : ''}
+        ${t.mileage ? `<span class="pill warn">✈ ${num(t.mileage)}M 승계</span>` : ''}
+        ${reserved ? '<span class="pill hot">예약중</span>' : ''}
+      </div>
+      <div class="cdrow">
+        <span class="lb">${dead ? '판매 종료' : u.label}</span>
+        <span class="cd tnum ${u.blink ? 'blink' : ''}" data-exp="${t.expiresAt}">${fmtCd(ms)}</span>
+      </div>
+      <div class="bar"><i style="width:${lifeBar(ms)}%"></i></div>
+      <div class="perf"></div>
+    </div>
+    <div class="foot">
+      <div class="price">
+        <div class="was">${won(t.originalPrice)}</div>
+        <div class="now">${won(l.askingPrice)}${off > 0 ? `<span class="off">${off}%↓</span>` : ''}</div>
+        <div class="dep">예약금 ${won(l.depositAmount)}</div>
+      </div>
+      <div class="seller">
+        <div class="av">${esc((l.sellerId || '?').slice(-2))}</div>
+        ${esc(l.sellerId)}
+      </div>
+    </div>
+  </button>`;
 }
 
-function detailHtml(l) {
-  const t = l.ticket || {};
-  const c = detailCache[l.id];
-  const f = (lbl, val) => '<div class="f"><div class="lbl">' + lbl + '</div><div class="val">' + val + '</div></div>';
-
-  let out = '<div class="dgrid">';
-  out += f('카테고리', esc(t.categoryName) + ' <span class="sub">(' + esc(t.expiryType) + ')</span>');
-  out += f('수량', (t.quantity ?? 1) + '매');
-  out += f('정가', won(t.originalPrice));
-  out += f('희망가', won(l.askingPrice) +
-    (t.originalPrice ? ' <span class="sub">(정가의 ' +
-      Math.round(l.askingPrice / t.originalPrice * 100) + '%)</span>' : ''));
-  out += f('예약금 (희망가 10%)', won(l.depositAmount));
-  out += f('만료 시각', new Date(t.expiresAt).toLocaleString('ko-KR'));
-
-  if (t.seatInfo) {
-    out += '<div class="f" style="grid-column:1/-1"><div class="lbl">좌석</div>' + seatPills(t.seatInfo) + '</div>';
-  }
-  if (t.mileage) {
-    out += f('적립 마일', '✈ ' + num(t.mileage) + ' M <span class="sub">(양도 시 함께 이전)</span>');
-  }
-
-  // 가격 추천 — 표본 수와 산출 단계를 같이 보여준다. 숫자만 주면 믿을지 말지 알 수 없다
-  if (c && c.suggestion) {
-    const s = c.suggestion;
-    out += f('추천가', won(s.suggestedPrice) +
-      ' <span class="sub">(' + s.bucketLabel + ' · 표본 ' + s.sampleCount + '건 · ' + s.basis + ')</span>');
-  } else if (c) {
-    out += f('추천가', '<span class="sub">산출 실패</span>');
-  } else {
-    out += f('추천가', '<span class="sub">불러오는 중…</span>');
-  }
-
-  // 예약 현황 — 당사자·판매자만 볼 수 있어서 403이면 "있는데 못 본다"는 뜻
-  if (c) {
-    const r = c.reservation, st = c.reservationStatus;
-    let txt;
-    if (r) txt = '예약 중 · 결제 마감 ' + new Date(r.paymentDeadline).toLocaleTimeString('ko-KR');
-    else if (st === 403) txt = '<span class="sub">예약 있음 (당사자만 열람)</span>';
-    else if (st === 401) txt = '<span class="sub">로그인하면 보입니다</span>';
-    else txt = '<span class="sub">예약 없음</span>';
-    out += f('예약 현황', txt);
-  }
-  out += '</div>';
-
-  out += '<div class="dnote">' +
-    '판매 ID ' + l.id + ' · 티켓 ID ' + t.id + ' · 소유자 ' + esc(t.ownerId) +
-    ' · 등록 ' + new Date(l.createdAt).toLocaleDateString('ko-KR') + '</div>';
-
-  out += '<div class="dact">' +
-    '<a href="/swagger-ui.html" class="sub">Swagger에서 예약·결제 시연</a>' +
-    '</div>';
-  return out;
-}
-
-/* 1초마다 숫자만 갱신한다. 목록 전체를 다시 그리면 스크롤이 튀고 펼친 게 닫힌다 */
+/* 1초마다 숫자만 갈아끼운다. 목록을 다시 그리면 스크롤이 튀고 모달이 닫힌다 */
 function tickCountdowns() {
-  document.querySelectorAll('.cd[data-exp]').forEach(el => {
+  document.querySelectorAll('[data-exp]').forEach(el => {
     const ms = remain(el.dataset.exp);
     const u = urgency(ms);
-    el.textContent = fmt(ms);
-    el.classList.toggle('blink', u.blink);
-    el.closest('.item').style.setProperty('--u', u.c);
+    el.textContent = fmtCd(ms);
+    if (el.classList.contains('cd')) {
+      el.classList.toggle('blink', u.blink);
+      const host = el.closest('.tk') || el.closest('.cdbig');
+      if (host) host.style.setProperty('--u', u.c);
+      const bar = host && host.querySelector('.bar i');
+      if (bar) bar.style.width = lifeBar(ms) + '%';
+    }
   });
 }
 
-/* ─────────────────────────────────────────────────────────
-   차트 — 라이브러리 없이 CSS/SVG로
-   ───────────────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════
+   7. 상품 상세 모달 — 예약 → 결제 → 확정
+   ═══════════════════════════════════════════════════════════ */
+function openScrim(html, wide) {
+  $('modal').className = 'modal' + (wide ? ' wide' : '');
+  $('modal').innerHTML = html;
+  $('scrim').classList.add('on');
+  document.body.style.overflow = 'hidden';
+}
+function closeModal() {
+  $('scrim').classList.remove('on');
+  document.body.style.overflow = '';
+  S.detailId = null;
+}
+$('scrim').onclick = e => { if (e.target === $('scrim')) closeModal(); };
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal(); closeDrawer(); } });
+
+async function openDetail(id) {
+  S.detailId = id;
+  const l = S.listings.find(x => x.id === id);
+  openScrim(detailHtml(l, null), true);
+
+  const [d, sug, res] = await Promise.all([
+    api('/api/listings/' + id),
+    l ? api('/api/analysis/price-suggestion?ticketId=' + l.ticket.id) : Promise.resolve({}),
+    api('/api/listings/' + id + '/reserve'),
+  ]);
+  if (S.detailId !== id) return;                       // 그새 닫았으면 그리지 않는다
+  const listing = (d.ok && d.body) ? d.body : l;
+  const extra = {
+    sug: sug.ok ? sug.body : null,
+    res: res.ok ? res.body : null,
+    resStatus: res.status,
+  };
+  S.detailCache[id] = extra;
+  openScrim(detailHtml(listing, extra), true);
+}
+
+function detailHtml(l, x) {
+  if (!l) return `<div class="mbody"><div class="empty">매물을 찾을 수 없습니다.</div></div>`;
+  const t = l.ticket, c = catOf(t.category);
+  const ms = remain(t.expiresAt), u = urgency(ms), off = discount(l);
+  const mine = S.me && S.me.id === l.sellerId;
+  const res = x && x.res;
+  const iAmBuyer = res && S.me && res.buyerId === S.me.id;
+
+  /* 진행 단계 */
+  const step = l.status === 'OPEN' ? 0 : l.status === 'RESERVED' ? 1 : l.status === 'IN_ESCROW' ? 2 : 3;
+  const stepHtml = ['판매중','예약(10%)','결제·에스크로','구매확정']
+    .map((s, i) => `<span class="st ${i < step ? 'done' : i === step ? 'on' : ''}">${s}</span>`)
+    .join('<span class="ar">→</span>');
+
+  /* 가격 추천 게이지 — 추천가 대비 내 매물이 어디쯤인지 */
+  let gauge = '';
+  if (x && x.sug) {
+    const s = x.sug;
+    const base = Math.max(s.suggestedPrice, l.askingPrice, 1);
+    const askPc = Math.min(100, l.askingPrice / base * 100);
+    const sugPc = Math.min(100, s.suggestedPrice / base * 100);
+    const gap = s.suggestedPrice > 0 ? Math.round((l.askingPrice / s.suggestedPrice - 1) * 100) : 0;
+    const verdict = gap <= -10 ? ['ok','시세보다 저렴'] : gap >= 10 ? ['hot','시세보다 비쌈'] : ['brand','시세 수준'];
+    gauge = `<div class="gauge">
+      <div class="gh">📊 실거래 기반 적정가 <span class="pill ${verdict[0]}">${verdict[1]} ${gap > 0 ? '+' : ''}${gap}%</span>
+        <span class="tagv">추천 ${won(s.suggestedPrice)}</span></div>
+      <div class="track"><i style="width:${askPc}%"></i><span class="mk" style="left:${sugPc}%"></span></div>
+      <div class="gl"><span>이 매물 ${won(l.askingPrice)}</span><span>▲ 추천가</span></div>
+      <div class="why">${esc(s.bucketLabel)} 구간 · 표본 ${num(s.sampleCount)}건 · 평균 거래가율 ${(s.avgRatio*100).toFixed(1)}%<br>
+        ${esc(s.description)}</div>
+    </div>`;
+  } else if (x) {
+    gauge = `<div class="gauge"><div class="why">적정가를 산출하지 못했습니다.</div></div>`;
+  }
+
+  /* 예약 현황 */
+  let resHtml = '';
+  if (x) {
+    if (res) {
+      resHtml = `<div class="kv" style="margin-top:14px">
+        <div class="full"><div class="k">예약 진행 중</div>
+          <div class="v">${esc(res.buyerId)} · 결제 마감 <span class="tnum">${dt(res.paymentDeadline)}</span>
+            <span class="pill ${res.remainingMinutes < 5 ? 'hot' : 'warn'}">${res.remainingMinutes > 0 ? res.remainingMinutes + '분 남음' : '마감 지남'}</span></div></div>
+        <div><div class="k">홀드된 예약금</div><div class="v">${won(res.depositAmount)}</div></div>
+        <div><div class="k">결제 시 추가 납부</div><div class="v">${won(res.remainingAmount)}</div></div>
+      </div>`;
+    } else if (x.resStatus === 403) {
+      resHtml = `<div class="kv" style="margin-top:14px"><div class="full"><div class="k">예약 현황</div>
+        <div class="v muted">다른 구매자가 예약 중입니다 (당사자만 열람)</div></div></div>`;
+    }
+  }
+
+  /* 액션 버튼 — 내 위치(판매자/구매자/제3자)와 단계에 따라 달라진다 */
+  let acts = '';
+  if (!S.me) {
+    acts = `<button class="btn primary blk" onclick="openLogin()">로그인하고 예약하기</button>`;
+  } else if (mine) {
+    acts = `<button class="btn blk" ${l.status !== 'OPEN' && l.status !== 'RESERVED' ? 'disabled' : ''}
+              onclick="actWithdraw(${l.id})">판매 철회하기</button>
+            <span class="pill brand" style="align-self:center">내가 등록한 매물</span>`;
+  } else if (ms <= 0) {
+    acts = `<button class="btn blk" disabled>만료되어 거래할 수 없습니다</button>`;
+  } else if (l.status === 'OPEN') {
+    acts = `<button class="btn primary blk" onclick="actReserve(${l.id})">
+              예약금 ${won(l.depositAmount)} 결제하고 예약</button>`;
+  } else if (l.status === 'RESERVED' && iAmBuyer) {
+    acts = `<button class="btn primary" style="flex:1" onclick="actPay(${l.id})">
+              잔액 ${won(res.remainingAmount)} 결제하기</button>
+            <button class="btn" onclick="actCancel(${l.id})">예약 취소</button>`;
+  } else if (l.status === 'RESERVED') {
+    acts = `<button class="btn blk" disabled>다른 구매자가 예약 중입니다</button>`;
+  } else {
+    acts = `<button class="btn blk" disabled>${LISTING_LABEL[l.status] || l.status} — 거래가 진행 중입니다</button>`;
+  }
+
+  return `
+    <div class="dhero" style="--g1:${c.g1};--g2:${c.g2}">
+      <span class="cate">${c.emo} ${c.label}</span>
+      <span class="pill" style="background:rgba(0,0,0,.25);border-color:transparent;color:#fff">${LISTING_LABEL[l.status] || l.status}</span>
+      <span class="dclose" onclick="closeModal()">✕</span>
+      <h3>${esc(t.title)}</h3>
+      ${t.seatInfo ? `<div class="seat">${String(t.seatInfo).split(/\s*,\s*/).map(p => `<span>💺 ${esc(p)}</span>`).join('')}</div>` : ''}
+      <span class="emo">${c.emo}</span>
+    </div>
+    <div class="mbody">
+      <div class="cdbig" style="--u:${u.c}">
+        <div>
+          <div class="lb">${ms > 0 ? u.label + ' · 남은 시간' : '판매 종료'}</div>
+          <div class="cd tnum ${u.blink ? 'blink' : ''}" data-exp="${t.expiresAt}">${fmtCd(ms)}</div>
+        </div>
+        <div class="rt">
+          <div class="w">${won(t.originalPrice)}</div>
+          <div class="p">${won(l.askingPrice)}${off > 0 ? `<span class="o">${off}%↓</span>` : ''}</div>
+        </div>
+      </div>
+
+      <div class="flow">${stepHtml}</div>
+
+      <div class="kv" style="margin-top:14px">
+        <div><div class="k">수량</div><div class="v">${t.quantity ?? 1}매 ${t.quantity > 1 ? '(일괄 양도)' : ''}</div></div>
+        <div><div class="k">예약금 (희망가 10%)</div><div class="v">${won(l.depositAmount)}</div></div>
+        <div><div class="k">만료 시각</div><div class="v tnum">${dtf(t.expiresAt)}</div></div>
+        <div><div class="k">만료 방식</div><div class="v">${
+          t.expiryType === 'POINT_IN_TIME' ? '시점 만료 (공연·탑승 시각)'
+          : t.expiryType === 'DATE_RANGE' ? '기간 만료 (사용 기한)'
+          : '연장 가능 (기프티콘)'}</div></div>
+        ${t.mileage ? `<div><div class="k">승계 마일리지</div><div class="v">✈ ${num(t.mileage)} M</div></div>` : ''}
+        ${t.validFrom ? `<div><div class="k">사용 기간</div><div class="v tnum">${t.validFrom} ~ ${t.extendedUntil || t.validUntil}</div></div>` : ''}
+        <div><div class="k">판매자</div><div class="v">${esc(l.sellerId)}</div></div>
+        <div><div class="k">등록일</div><div class="v tnum">${dt(l.createdAt)}</div></div>
+      </div>
+
+      ${gauge}
+      ${resHtml}
+
+      <div class="note">
+        🛡 <b>안전거래 안내</b> — 결제금은 ESCROW_POOL에 보관되었다가 구매 확정 시 판매자에게 정산됩니다.
+        예약 후 10분 이내에는 예약금이 전액 환불되고, 그 뒤 취소하거나 결제 기한(최대 30분)을 넘기면 몰수됩니다.
+        결제 후 24시간이 지나면 자동으로 구매 확정됩니다.
+      </div>
+    </div>
+    <div class="mfoot">${acts}</div>`;
+}
+
+/* ── 거래 액션 ─────────────────────────────────────────── */
+async function actReserve(id) {
+  const r = await post('/api/listings/' + id + '/reserve');
+  if (!r.ok) return fail(r, '예약에 실패했습니다');
+  toast('예약 완료 — 예약금 ' + won(r.body.depositAmount) + ' 홀드, ' + r.body.remainingMinutes + '분 안에 결제하세요', 'ok');
+  await afterTrade(id);
+}
+async function actCancel(id) {
+  if (!confirm('예약을 취소할까요? 예약 후 10분이 지났다면 예약금은 몰수됩니다.')) return;
+  const r = await del('/api/listings/' + id + '/reserve');
+  if (!r.ok) return fail(r, '예약 취소에 실패했습니다');
+  toast(r.body && r.body.depositStatus === 'RELEASED' ? '예약 취소 — 예약금 전액 환불되었습니다' : '예약 취소 — 예약금이 몰수되었습니다', 'ok');
+  await afterTrade(id);
+}
+async function actPay(id) {
+  const r = await post('/api/listings/' + id + '/pay');
+  if (!r.ok) return fail(r, '결제에 실패했습니다');
+  toast('결제 완료 — ' + won(r.body.amount) + '이 에스크로에 보관되었습니다', 'ok');
+  await afterTrade(id);
+}
+async function actConfirm(escrowId) {
+  const r = await post('/api/escrows/' + escrowId + '/confirm');
+  if (!r.ok) return fail(r, '구매 확정에 실패했습니다');
+  toast('구매 확정 — 판매자에게 ' + won(r.body.sellerPayout) + ' 정산되었습니다', 'ok');
+  await afterTrade();
+}
+async function actRefund(escrowId) {
+  if (!confirm('환불을 요청할까요? 결제 후 10분 이내에만 가능합니다.')) return;
+  const r = await post('/api/escrows/' + escrowId + '/refund');
+  if (!r.ok) return fail(r, '환불에 실패했습니다');
+  toast('환불 완료 — 결제금이 반환되었습니다', 'ok');
+  await afterTrade();
+}
+async function actWithdraw(id) {
+  if (!confirm('판매를 철회할까요?')) return;
+  const r = await del('/api/listings/' + id);
+  if (!r.ok) return fail(r, '철회에 실패했습니다');
+  toast('판매를 철회했습니다', 'ok');
+  closeModal();
+  await afterTrade();
+}
+/** 거래 후 화면 정리 — 목록·잔액·알림을 다시 읽고, 상세가 열려 있으면 다시 그린다 */
+async function afterTrade(reopenId) {
+  await Promise.all([loadListings(), loadSummary(), loadMe()]);
+  if (S.view === 'my') loadMySub();
+  if (reopenId) openDetail(reopenId);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   8. 로그인 · 충전
+   ═══════════════════════════════════════════════════════════ */
+function openLogin() {
+  openScrim(`
+    <div class="mhead"><h3>로그인</h3><button class="x" onclick="closeModal()">✕</button></div>
+    <div class="mbody">
+      <div class="note" style="border:0;padding:0;margin:0 0 14px">
+        데모 계정으로 바로 체험할 수 있습니다. 비밀번호는 모두 <b>pass1234</b>입니다.
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px">
+        ${['user01','user02','user03','user04','user05'].map(u =>
+          `<button class="btn sm" style="flex-direction:column;height:auto;padding:10px 4px" onclick="quickLogin('${u}')">
+             <span style="font-size:17px">👤</span><span style="font-size:11px">${u}</span></button>`).join('')}
+      </div>
+      <div class="fld"><label>회원 ID</label><input id="li-id" value="user01" autocomplete="username"></div>
+      <div class="fld"><label>비밀번호</label><input id="li-pw" type="password" value="pass1234" autocomplete="current-password"></div>
+      <button class="btn primary blk" onclick="doLogin()">로그인</button>
+      <div class="note">계정이 없다면? <a href="#" onclick="openSignup();return false" style="color:var(--brand);font-weight:700">회원가입</a></div>
+    </div>`);
+  setTimeout(() => { const e = $('li-pw'); if (e) e.onkeydown = ev => { if (ev.key === 'Enter') doLogin(); }; }, 0);
+}
+const quickLogin = u => { $('li-id').value = u; $('li-pw').value = 'pass1234'; doLogin(); };
+
+async function doLogin() {
+  const id = $('li-id').value.trim(), password = $('li-pw').value;
+  const r = await post('/api/members/login', { id, password });
+  if (!r.ok) return fail(r, '로그인에 실패했습니다');
+  S.me = { id: r.body.id, balance: r.body.balance };
+  closeModal();
+  toast(id + '님, 환영합니다', 'ok');
+  S.detailCache = {};
+  await loadMe();
+  loadNotifs();
+  renderView();
+}
+async function logout() {
+  await post('/api/members/logout');
+  S.me = null; S.unread = 0; S.notifs = []; S.detailCache = {};
+  renderNav();
+  if (S.view === 'my') go('market'); else renderView();
+  toast('로그아웃되었습니다');
+}
+
+function openSignup() {
+  openScrim(`
+    <div class="mhead"><h3>회원가입</h3><button class="x" onclick="closeModal()">✕</button></div>
+    <div class="mbody">
+      <div class="fld"><label>회원 ID</label><input id="su-id" placeholder="영문 소문자로 시작, 4~20자">
+        <div class="hint">영문 소문자·숫자·밑줄만 사용할 수 있습니다</div></div>
+      <div class="fld"><label>비밀번호</label><input id="su-pw" type="password" placeholder="8~30자"></div>
+      <button class="btn primary blk" onclick="doSignup()">가입하고 시작하기</button>
+    </div>`);
+}
+async function doSignup() {
+  const id = $('su-id').value.trim(), password = $('su-pw').value;
+  const r = await post('/api/members', { id, password });
+  if (!r.ok) return fail(r, '가입에 실패했습니다');
+  toast('가입 완료 — 바로 로그인합니다', 'ok');
+  const lr = await post('/api/members/login', { id, password });
+  if (lr.ok) { S.me = { id: lr.body.id, balance: lr.body.balance }; closeModal(); await loadMe(); renderView(); }
+}
+
+function openCharge() {
+  if (!S.me) return openLogin();
+  openScrim(`
+    <div class="mhead"><h3>예치금 충전</h3><button class="x" onclick="closeModal()">✕</button></div>
+    <div class="mbody">
+      <div class="kv" style="margin-bottom:16px"><div class="full">
+        <div class="k">현재 잔액</div><div class="v tnum" style="font-size:22px">${won(S.me.balance)}</div></div></div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px">
+        ${[10000,50000,100000,500000].map(v =>
+          `<button class="btn sm" onclick="$('ch-amt').value=${v}">+${(v/10000)}만</button>`).join('')}
+      </div>
+      <div class="fld"><label>충전 금액</label><input id="ch-amt" type="number" value="100000" min="1" max="10000000">
+        <div class="hint">데모 환경입니다 — 실제 결제 없이 EXTERNAL 계정에서 들어온 것으로 원장에 기록됩니다</div></div>
+      <button class="btn primary blk" onclick="doCharge()">충전하기</button>
+    </div>`);
+}
+async function doCharge() {
+  const amount = Number($('ch-amt').value);
+  const r = await post('/api/members/' + S.me.id + '/charge', { amount });
+  if (!r.ok) return fail(r, '충전에 실패했습니다');
+  S.me.balance = r.body.balance;
+  closeModal(); renderNav();
+  toast(won(amount) + ' 충전 완료', 'ok');
+  if (S.view === 'my') loadMySub();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   9. 판매하기 — 보유 티켓 등록 / 새 티켓 등록
+   ═══════════════════════════════════════════════════════════ */
+async function openSell(tab) {
+  if (!S.me) return openLogin();
+  const t = tab || 'own';
+  const r = await api('/api/members/' + S.me.id);
+  const tickets = (r.ok && r.body && r.body.tickets) ? r.body.tickets.filter(x => x.status === 'OWNED') : [];
+
+  openScrim(`
+    <div class="mhead"><h3>판매하기</h3><button class="x" onclick="closeModal()">✕</button></div>
+    <div class="mbody">
+      <div class="subtabs">
+        <button class="${t==='own'?'on':''}" onclick="openSell('own')">보유 티켓 등록 (${tickets.length})</button>
+        <button class="${t==='new'?'on':''}" onclick="openSell('new')">새 티켓 만들기</button>
+      </div>
+      ${t === 'own' ? sellOwnHtml(tickets) : sellNewHtml()}
+    </div>`, true);
+  if (t === 'new') bindTicketForm();
+}
+
+function sellOwnHtml(tickets) {
+  if (!tickets.length) return `<div class="empty"><span class="big">📭</span>
+    판매 등록할 수 있는 티켓이 없습니다.<br><span style="font-size:12px">‘새 티켓 만들기’에서 먼저 티켓을 등록하세요.</span></div>`;
+  return `<div class="panel">${tickets.map(t => {
+    const c = catOf(t.category), ms = remain(t.expiresAt), u = urgency(ms);
+    return `<div class="lrow">
+      <div class="ic cat-ic" style="--g1:${c.g1};--g2:${c.g2}">${c.emo}</div>
+      <div class="m"><div class="t">${esc(t.title)}</div>
+        <div class="s">${c.label} · ${t.quantity}매 · 정가 ${won(t.originalPrice)} ·
+          <span style="color:${u.c};font-weight:700">${ms > 0 ? fmtCd(ms).split(' ')[0] + ' 남음' : '만료됨'}</span></div></div>
+      <div class="acts2"><button class="btn sm primary" onclick="openPriceStep(${t.id})">판매 등록</button></div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+/** 2단계 — 추천가를 먼저 보여주고 값을 정하게 한다 */
+async function openPriceStep(ticketId) {
+  const [tk, sg] = await Promise.all([
+    api('/api/tickets/' + ticketId),
+    api('/api/analysis/price-suggestion?ticketId=' + ticketId),
+  ]);
+  if (!tk.ok) return fail(tk, '티켓을 불러오지 못했습니다');
+  const t = tk.body, s = sg.ok ? sg.body : null, c = catOf(t.category);
+  const suggested = s ? s.suggestedPrice : Math.round(t.originalPrice * 0.7);
+
+  openScrim(`
+    <div class="mhead"><h3>판매 가격 정하기</h3><button class="x" onclick="closeModal()">✕</button></div>
+    <div class="mbody">
+      <div class="lrow" style="border:1px solid var(--line);border-radius:13px;margin-bottom:16px">
+        <div class="ic cat-ic" style="--g1:${c.g1};--g2:${c.g2}">${c.emo}</div>
+        <div class="m"><div class="t">${esc(t.title)}</div>
+          <div class="s">${c.label} · ${t.quantity}매 · 정가 ${won(t.originalPrice)}</div></div>
+      </div>
+      ${s ? `<div class="gauge" style="margin:0 0 16px">
+        <div class="gh">📊 실거래 기반 추천가 <span class="tagv" style="color:var(--brand)">${won(s.suggestedPrice)}</span></div>
+        <div class="why">${esc(s.bucketLabel)} 구간 · 표본 ${num(s.sampleCount)}건 · 평균 거래가율 ${(s.avgRatio*100).toFixed(1)}%<br>${esc(s.description)}</div>
+      </div>` : ''}
+      <div class="fld"><label>희망 판매가 (전체 ${t.quantity}매 합계)</label>
+        <input id="sl-price" type="number" value="${suggested}" min="1" oninput="previewPrice(${t.originalPrice})">
+        <div class="hint" id="sl-hint"></div></div>
+      <div style="display:flex;gap:7px;margin-bottom:16px;flex-wrap:wrap">
+        ${[50,60,70,80,90].map(p => `<button class="btn sm" onclick="$('sl-price').value=${Math.round(t.originalPrice*p/100)};previewPrice(${t.originalPrice})">정가 ${p}%</button>`).join('')}
+      </div>
+      <div class="kv" style="margin-bottom:16px">
+        <div><div class="k">구매자가 낼 예약금 (10%)</div><div class="v" id="sl-dep">—</div></div>
+        <div><div class="k">거래 확정 시 실수령 (수수료 5% 차감)</div><div class="v" id="sl-net">—</div></div>
+      </div>
+      <button class="btn primary blk" onclick="doList(${t.id})">이 가격으로 판매 등록</button>
+    </div>`);
+  previewPrice(t.originalPrice);
+}
+function previewPrice(original) {
+  const p = Number($('sl-price').value) || 0;
+  const off = original ? Math.round((1 - p / original) * 100) : 0;
+  $('sl-hint').innerHTML = p > 0
+    ? `정가 대비 <b style="color:${off >= 0 ? 'var(--ok)' : 'var(--hot)'}">${off >= 0 ? off + '% 할인' : Math.abs(off) + '% 비쌈'}</b> · 정가 ${won(original)}`
+    : '금액을 입력하세요';
+  $('sl-dep').textContent = won(Math.floor(p * 0.1));
+  $('sl-net').textContent = won(p - Math.floor(p * 0.05));
+}
+async function doList(ticketId) {
+  const askingPrice = Number($('sl-price').value);
+  const r = await post('/api/listings', { ticketId, askingPrice });
+  if (!r.ok) return fail(r, '판매 등록에 실패했습니다');
+  closeModal();
+  toast('판매 등록 완료 — 마켓에 올라갔습니다', 'ok');
+  await afterTrade();
+  go('market');
+}
+
+/* ── 새 티켓 만들기 ─────────────────────────────────────── */
+function sellNewHtml() {
+  return `
+    <div class="fld"><label>카테고리</label>
+      <select id="tk-cat">${CATS.filter(c => c[0]).map(c => `<option value="${c[0]}">${c[2]} ${c[1]}</option>`).join('')}</select></div>
+    <div class="fld"><label>제목</label><input id="tk-title" placeholder="예) 아이유 콘서트 - 올림픽홀" maxlength="200"></div>
+    <div class="row2">
+      <div class="fld"><label>정가 (전체 합계)</label><input id="tk-price" type="number" placeholder="264000" min="1"></div>
+      <div class="fld"><label>수량</label><select id="tk-qty"><option value="1">1매</option><option value="2">2매</option></select></div>
+    </div>
+    <div class="row2">
+      <div class="fld"><label>좌석·구역 <span class="muted">(선택)</span></label><input id="tk-seat" placeholder="27A, 27B" maxlength="100"></div>
+      <div class="fld" id="tk-mile-wrap"><label>승계 마일리지 <span class="muted">(항공, 선택)</span></label><input id="tk-mile" type="number" min="0" placeholder="2440"></div>
+    </div>
+    <div id="tk-date-point" class="fld"><label>공연·탑승 일시</label><input id="tk-event" type="datetime-local">
+      <div class="hint">이 시각이 지나면 티켓은 자동으로 실효 처리됩니다</div></div>
+    <div id="tk-date-range" class="row2" style="display:none">
+      <div class="fld"><label>사용 시작일</label><input id="tk-from" type="date"></div>
+      <div class="fld"><label>사용 종료일</label><input id="tk-until" type="date"></div>
+    </div>
+    <button class="btn primary blk" onclick="doCreateTicket()">티켓 등록하고 가격 정하기</button>`;
+}
+const POINT_CATS = ['MOVIE','CONCERT','SPORTS','TRAIN','FLIGHT'];
+function bindTicketForm() {
+  const sel = $('tk-cat');
+  const sync = () => {
+    const point = POINT_CATS.includes(sel.value);
+    $('tk-date-point').style.display = point ? '' : 'none';
+    $('tk-date-range').style.display = point ? 'none' : '';
+    $('tk-mile-wrap').style.display  = sel.value === 'FLIGHT' ? '' : 'none';
+  };
+  sel.onchange = sync; sync();
+  // 기본값 — 비워두면 등록 버튼을 눌렀을 때 무엇이 필요한지 알기 어렵다
+  const d = new Date(Date.now() + 7*86400e3);
+  const pad = n => String(n).padStart(2,'0');
+  $('tk-event').value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T19:00`;
+  $('tk-from').value  = new Date().toISOString().slice(0,10);
+  $('tk-until').value = new Date(Date.now() + 30*86400e3).toISOString().slice(0,10);
+}
+async function doCreateTicket() {
+  const category = $('tk-cat').value;
+  const point = POINT_CATS.includes(category);
+  const body = {
+    category,
+    title: $('tk-title').value.trim(),
+    originalPrice: Number($('tk-price').value),
+    quantity: Number($('tk-qty').value),
+    seatInfo: $('tk-seat').value.trim() || null,
+    mileage: $('tk-mile').value ? Number($('tk-mile').value) : null,
+    eventAt: point ? $('tk-event').value : null,
+    validFrom: point ? null : $('tk-from').value,
+    validUntil: point ? null : $('tk-until').value,
+  };
+  if (!body.title) return toast('제목을 입력하세요', 'err');
+  if (!body.originalPrice) return toast('정가를 입력하세요', 'err');
+  const r = await post('/api/tickets', body);
+  if (!r.ok) return fail(r, '티켓 등록에 실패했습니다');
+  toast('티켓이 등록되었습니다', 'ok');
+  openPriceStep(r.body.id);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   10. 마이페이지
+   ═══════════════════════════════════════════════════════════ */
+const MYSUBS = [
+  ['purchase','구매 내역'], ['reserve','내 예약'], ['sell','내 판매'],
+  ['ticket','보유 티켓'], ['ledger','거래 원장'],
+];
+
+function viewMy() {
+  if (!S.me) {
+    $('view').innerHTML = `<div class="panel pad"><div class="empty"><span class="big">🔐</span>
+      로그인이 필요합니다.<br><button class="btn primary" style="margin-top:12px" onclick="openLogin()">로그인하기</button></div></div>`;
+    return;
+  }
+  $('view').innerHTML = `
+    <div class="mysplit">
+      <div>
+        <div class="panel" style="overflow:hidden">
+          <div class="profile">
+            <div class="av">${esc(S.me.id.slice(-2))}</div>
+            <div class="id">${esc(S.me.id)}</div>
+            <div class="since" id="my-since">—</div>
+            <div class="bal"><div class="l">예치금 잔액</div><div class="v tnum" id="my-bal">${won(S.me.balance)}</div></div>
+            <button class="btn primary blk" onclick="openCharge()">충전하기</button>
+          </div>
+          <div class="mstats" id="my-stats"></div>
+        </div>
+        <div class="panel pad" style="margin-top:14px">
+          <div style="font-size:12px;font-weight:800;margin-bottom:8px">📈 거래 성과</div>
+          <div id="my-perf" class="muted" style="font-size:12.5px">불러오는 중…</div>
+        </div>
+      </div>
+      <div>
+        <div class="subtabs" id="my-tabs"></div>
+        <div class="panel" id="my-body"><div class="empty">불러오는 중…</div></div>
+      </div>
+    </div>`;
+  $('my-tabs').innerHTML = MYSUBS.map(([k, l]) =>
+    `<button class="${S.mysub === k ? 'on' : ''}" onclick="S.mysub='${k}';viewMy()">${l}</button>`).join('');
+  loadMyProfile();
+  loadMySub();
+}
+
+async function loadMyProfile() {
+  if (!S.me) return;
+  const who = S.me.id;
+  const [d, s] = await Promise.all([
+    api('/api/members/' + who),
+    api('/api/members/' + who + '/summary'),
+  ]);
+  if (!S.me || S.me.id !== who) return;
+  if (d.ok && d.body) {
+    S.me.balance = d.body.balance;
+    S.me.tickets = d.body.tickets;
+    const el = $('my-bal'); if (el) el.textContent = won(d.body.balance);
+    const si = $('my-since'); if (si) si.textContent = new Date(d.body.createdAt).toLocaleDateString('ko-KR') + ' 가입';
+    renderNav();
+  }
+  if (s.ok && s.body) {
+    const m = s.body;
+    const st = $('my-stats');
+    if (st) st.innerHTML = `
+      <div><div class="v tnum">${m.ownedTickets + m.listedTickets}</div><div class="l">보유 티켓</div></div>
+      <div><div class="v tnum">${m.completedSales}</div><div class="l">판매 성사</div></div>
+      <div><div class="v tnum">${m.completedPurchases}</div><div class="l">구매 확정</div></div>`;
+    const pf = $('my-perf');
+    if (pf) pf.innerHTML = `
+      <div style="display:flex;justify-content:space-between;padding:5px 0"><span>판매 정산 수령</span><b class="tnum" style="color:var(--ok)">${won(m.totalEarned)}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0"><span>구매 확정 총액</span><b class="tnum">${won(m.totalPurchased)}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0"><span>진행 중 판매</span><b class="tnum">${m.activeListings}건</b></div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0"><span>진행 중 예약</span><b class="tnum">${m.activeReservations}건</b></div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;border-top:1px solid var(--line);margin-top:4px">
+        <span>못 쓰고 소멸시킨 티켓</span><b class="tnum" style="color:var(--hot)">${m.expiredTickets}건</b></div>`;
+  }
+}
+
+async function loadMySub() {
+  const box = $('my-body'); if (!box || !S.me) return;
+  const id = S.me.id;
+
+  if (S.mysub === 'purchase') {
+    const r = await api('/api/members/' + id + '/escrows?count=50');
+    const rows = (r.ok && r.body) ? r.body.list : [];
+    if (!rows.length) return box.innerHTML = emptyBox('🛍️', '아직 구매 내역이 없습니다.');
+    box.innerHTML = rows.map(e => {
+      const buy = e.buyerId === id;
+      const canAct = e.status === 'HOLDING' && buy;
+      return `<div class="lrow">
+        <div class="ic">${buy ? '🛍️' : '💼'}</div>
+        <div class="m"><div class="t">${esc(e.ticketTitle)}</div>
+          <div class="s">${buy ? '구매' : '판매'} · ${ESCROW_LABEL[e.status] || e.status} ·
+            ${buy ? '판매자 ' + esc(e.sellerId) : '구매자 ' + esc(e.buyerId)} ·
+            결제 ${dt(e.paidAt)}${e.status === 'HOLDING' ? ' · 자동확정 ' + dt(e.autoConfirmAt) : ''}</div></div>
+        <div class="r"><div class="a tnum">${won(buy ? e.amount : e.sellerPayout)}</div>
+          <div class="d">${buy ? '결제액' : '실수령 (수수료 ' + won(e.commission) + ')'}</div></div>
+        ${canAct ? `<div class="acts2">
+          <button class="btn sm primary" onclick="actConfirm(${e.id})">구매 확정</button>
+          <button class="btn sm" onclick="actRefund(${e.id})">환불</button></div>` : ''}
+      </div>`;
+    }).join('');
+    return;
+  }
+
+  if (S.mysub === 'reserve') {
+    const r = await api('/api/members/' + id + '/reservations?count=50');
+    const rows = (r.ok && r.body) ? r.body.list : [];
+    if (!rows.length) return box.innerHTML = emptyBox('🤝', '진행 중이거나 지난 예약이 없습니다.');
+    box.innerHTML = rows.map(v => {
+      const live = v.depositStatus === 'HELD';
+      return `<div class="lrow">
+        <div class="ic">${live ? '⏳' : v.depositStatus === 'FORFEITED' ? '💸' : v.depositStatus === 'CAPTURED' ? '💳' : '↩️'}</div>
+        <div class="m"><div class="t">${esc(v.ticketTitle)}</div>
+          <div class="s">${DEPOSIT_LABEL[v.depositStatus] || v.depositStatus} · 판매자 ${esc(v.sellerId)} ·
+            ${live ? `결제 마감 ${dt(v.paymentDeadline)} <b style="color:${v.remainingMinutes < 5 ? 'var(--hot)' : 'var(--warn)'}">(${v.remainingMinutes > 0 ? v.remainingMinutes + '분 남음' : '마감'})</b>`
+                   : dt(v.resolvedAt) + ' 종료'}</div></div>
+        <div class="r"><div class="a tnum">${won(v.depositAmount)}</div><div class="d">예약금 · 잔금 ${won(v.remainingAmount)}</div></div>
+        ${live ? `<div class="acts2">
+          <button class="btn sm primary" onclick="actPay(${v.listingId})">결제</button>
+          <button class="btn sm" onclick="actCancel(${v.listingId})">취소</button></div>` : ''}
+      </div>`;
+    }).join('');
+    return;
+  }
+
+  if (S.mysub === 'sell') {
+    const r = await api('/api/listings/list?count=60&sort=recent');
+    const rows = ((r.ok && r.body) ? r.body.list : []).filter(l => l.sellerId === id);
+    if (!rows.length) return box.innerHTML = emptyBox('🏷️', '판매 중인 매물이 없습니다.',
+      `<button class="btn primary sm" style="margin-top:10px" onclick="openSell()">판매하기</button>`);
+    box.innerHTML = rows.map(l => {
+      const c = catOf(l.ticket.category), ms = remain(l.ticket.expiresAt), u = urgency(ms);
+      return `<div class="lrow">
+        <div class="ic cat-ic" style="--g1:${c.g1};--g2:${c.g2}">${c.emo}</div>
+        <div class="m"><div class="t">${esc(l.ticket.title)}</div>
+          <div class="s">${LISTING_LABEL[l.status]} · <span style="color:${u.c};font-weight:700" data-exp="${l.ticket.expiresAt}">${fmtCd(ms)}</span> 남음</div></div>
+        <div class="r"><div class="a tnum">${won(l.askingPrice)}</div><div class="d">정가 ${won(l.ticket.originalPrice)}</div></div>
+        <div class="acts2"><button class="btn sm" onclick="openDetail(${l.id})">상세</button></div>
+      </div>`;
+    }).join('');
+    return;
+  }
+
+  if (S.mysub === 'ticket') {
+    const r = await api('/api/members/' + id);
+    const rows = (r.ok && r.body) ? r.body.tickets : [];
+    if (!rows.length) return box.innerHTML = emptyBox('🎫', '보유한 티켓이 없습니다.');
+    box.innerHTML = rows.map(t => {
+      const c = catOf(t.category), ms = remain(t.expiresAt), u = urgency(ms);
+      const canSell = t.status === 'OWNED' && ms > 0;
+      const canExtend = t.expiryType === 'EXTENDABLE' && t.status === 'OWNED';
+      return `<div class="lrow">
+        <div class="ic cat-ic" style="--g1:${c.g1};--g2:${c.g2}">${c.emo}</div>
+        <div class="m"><div class="t">${esc(t.title)}</div>
+          <div class="s">${c.label} · ${t.quantity}매 · ${TICKET_LABEL[t.status] || t.status} ·
+            <span style="color:${u.c};font-weight:700">${ms > 0 ? fmtCd(ms).split(' ')[0] + ' 남음' : '만료'}</span></div></div>
+        <div class="r"><div class="a tnum">${won(t.originalPrice)}</div><div class="d">정가</div></div>
+        <div class="acts2">
+          ${canSell ? `<button class="btn sm primary" onclick="openPriceStep(${t.id})">판매</button>` : ''}
+          ${canExtend ? `<button class="btn sm" onclick="openExtend(${t.id})">기한 연장</button>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+    return;
+  }
+
+  if (S.mysub === 'ledger') {
+    const r = await api('/api/members/' + id + '/ledger?count=60');
+    const rows = (r.ok && r.body) ? r.body.list : [];
+    if (!rows.length) return box.innerHTML = emptyBox('📒', '거래 기록이 없습니다.');
+    box.innerHTML = rows.map(g => {
+      const plus = g.signedAmount > 0;
+      return `<div class="lrow">
+        <div class="ic">${plus ? '📈' : '📉'}</div>
+        <div class="m"><div class="t">${esc(LEDGER_LABEL[g.reason] || g.reason)}</div>
+          <div class="s">${esc(g.memo || '')} ${g.refType ? '· ' + g.refType + ' #' + g.refId : ''}</div></div>
+        <div class="r"><div class="a tnum ${plus ? 'plus' : 'minus'}">${plus ? '+' : '−'}${num(Math.abs(g.signedAmount))}</div>
+          <div class="d">잔액 ${num(g.balanceAfter)} · ${dt(g.createdAt)}</div></div>
+      </div>`;
+    }).join('');
+    return;
+  }
+}
+const emptyBox = (emo, msg, extra) =>
+  `<div class="empty"><span class="big">${emo}</span>${msg}${extra || ''}</div>`;
+
+function openExtend(ticketId) {
+  const d = new Date(Date.now() + 60*86400e3).toISOString().slice(0,10);
+  openScrim(`
+    <div class="mhead"><h3>기한 연장</h3><button class="x" onclick="closeModal()">✕</button></div>
+    <div class="mbody">
+      <div class="note" style="border:0;padding:0;margin:0 0 14px">기프티콘처럼 연장이 가능한 티켓만 기한을 미룰 수 있습니다.</div>
+      <div class="fld"><label>연장할 기한</label><input id="ex-date" type="date" value="${d}"></div>
+      <button class="btn primary blk" onclick="doExtend(${ticketId})">연장하기</button>
+    </div>`);
+}
+async function doExtend(ticketId) {
+  const r = await post('/api/tickets/' + ticketId + '/extend', { extendedUntil: $('ex-date').value });
+  if (!r.ok) return fail(r, '연장에 실패했습니다');
+  closeModal(); toast('기한이 연장되었습니다', 'ok'); loadMySub();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   11. 알림 드로어
+   ═══════════════════════════════════════════════════════════ */
+function openDrawer() { $('drawer').classList.add('on'); loadNotifs(); }
+function closeDrawer() { $('drawer').classList.remove('on'); }
+
+async function loadNotifs() {
+  if (!S.me) return;
+  const who = S.me.id;
+  const r = await api('/api/members/' + who + '/notifications?count=40');
+  if (!S.me || S.me.id !== who) return;
+  S.notifs = (r.ok && r.body) ? r.body.list : [];
+  const box = $('notif-list');
+  box.innerHTML = S.notifs.length ? S.notifs.map(n => `
+    <div class="nrow ${n.isRead ? '' : 'unread'}" onclick="readNotif(${n.id})">
+      <div class="ni">${NOTI_ICON[n.type] || '🔔'}</div>
+      <div style="flex:1;min-width:0">
+        <div class="nt">${esc(n.title)}</div>
+        <div class="nm">${esc(n.message)}</div>
+        <div class="nd">${dt(n.createdAt)}${n.refType === 'LISTING' ? ' · 매물 #' + n.refId : ''}</div>
+      </div>
+    </div>`).join('')
+    : `<div class="empty"><span class="big">🔔</span>알림이 없습니다.</div>`;
+  const u = await api('/api/members/' + who + '/notifications/unread-count');
+  if (!S.me || S.me.id !== who) return;
+  if (u.ok) { S.unread = u.body ?? 0; renderNav(); }
+}
+async function readNotif(id) {
+  const n = S.notifs.find(x => x.id === id);
+  await patch('/api/notifications/' + id + '/read');
+  loadNotifs();
+  if (n && n.refType === 'LISTING') { closeDrawer(); openDetail(n.refId); }
+}
+async function markAllRead() {
+  if (!S.me) return;
+  const r = await patch('/api/members/' + S.me.id + '/notifications/read-all');
+  if (r.ok) { toast(num(r.body) + '건을 읽음 처리했습니다'); loadNotifs(); }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   12. 마켓 리포트
+   ═══════════════════════════════════════════════════════════ */
+function viewReport() {
+  $('view').innerHTML = `
+    <div class="sec-h"><h2>📊 마켓 리포트</h2>
+      <span class="desc">MyBatis 집계 — 카테고리별 실효율과 일별 손실</span></div>
+    <div class="kpis" id="kpis"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px" class="rpt">
+      <section>
+        <div class="sec-h"><h2 style="font-size:15px">카테고리별 실효율</h2></div>
+        <div class="panel pad" id="chart-cat"><div class="empty">불러오는 중…</div></div>
+      </section>
+      <section>
+        <div class="sec-h"><h2 style="font-size:15px">일별 실효 손실 (7일)</h2></div>
+        <div class="panel pad" id="chart-loss"><div class="empty">불러오는 중…</div></div>
+      </section>
+    </div>
+    <style>@media(max-width:880px){.rpt{grid-template-columns:1fr !important}}</style>`;
+  paintKpis();
+  loadCharts();
+}
+
 async function loadCharts() {
   const cs = await api('/api/analysis/category-summary');
   const box = $('chart-cat');
-  if (cs.ok && cs.body) {
+  if (box && cs.ok && cs.body) {
     const rows = cs.body.categories.filter(c => c.tradedCount + c.expiredCount > 0);
-    box.innerHTML = rows.length ? '' : '<div class="empty">결말이 난 티켓이 아직 없습니다.</div>';
-    rows.forEach(c => {
-      const pct = Math.round(c.expiryRate * 1000) / 10;
-      const el = document.createElement('div');
-      el.className = 'bar';
-      el.innerHTML =
-        '<span class="nm">' + esc(c.displayName) + '</span>' +
-        '<span class="track"><span class="fill" style="width:' + Math.max(pct, 1.5) + '%"></span></span>' +
-        '<span class="pc">' + pct + '% (' + c.expiredCount + '/' + (c.tradedCount + c.expiredCount) + ')</span>';
-      box.appendChild(el);
-    });
-    if (rows.length) {
+    if (!rows.length) box.innerHTML = '<div class="empty">결말이 난 티켓이 아직 없습니다.</div>';
+    else {
       const t = cs.body.totals;
-      const note = document.createElement('div');
-      note.className = 'dnote';
-      note.innerHTML = '전체 ' + t.expiredCount + '/' + (t.tradedCount + t.expiredCount) +
-        ' 실효 · 거래액 ' + won(t.tradedAmount) + ' · 실효 손실 −' + won(t.lostAmount) +
-        '<br>분모는 "결말이 난 티켓"(양도완료+실효). 판매 중인 매물은 빠집니다';
-      box.appendChild(note);
+      box.innerHTML = rows.map(c => {
+        const pct = Math.round(c.expiryRate * 1000) / 10;
+        return `<div class="bar2">
+          <span class="nm">${catOf(c.category) ? catOf(c.category).emo : ''} ${esc(c.displayName)}</span>
+          <span class="track"><span class="fill" style="width:${Math.max(pct, 2)}%"></span></span>
+          <span class="pc">${pct}% (${c.expiredCount}/${c.tradedCount + c.expiredCount})</span>
+        </div>`;
+      }).join('') + `<div class="note">
+        전체 ${t.expiredCount}/${t.tradedCount + t.expiredCount} 실효 · 거래액 ${won(t.tradedAmount)} · 실효 손실 −${won(t.lostAmount)}<br>
+        분모는 “결말이 난 티켓”(양도완료 + 실효). 아직 판매 중인 매물은 빠집니다.</div>`;
     }
   }
 
   const ls = await api('/api/analysis/expiry-loss?days=7');
   const lbox = $('chart-loss');
-  if (ls.ok && ls.body) {
+  if (lbox && ls.ok && ls.body) {
     const daily = ls.body.daily;
-    lbox.innerHTML = daily.length ? '' : '<div class="empty">최근 7일간 실효가 없습니다.</div>';
-    if (daily.length) lbox.appendChild(lineChart(daily, ls.body.totals));
+    if (!daily.length) lbox.innerHTML = '<div class="empty">최근 7일간 실효가 없습니다.</div>';
+    else { lbox.innerHTML = ''; lbox.appendChild(lineChart(daily, ls.body.totals)); }
   }
 }
 
 /** 꺾은선 — SVG를 손으로 그린다. 점 몇 개짜리라 라이브러리가 과하다 */
 function lineChart(daily, totals) {
-  const W = 460, H = 150, P = 30;
+  const W = 470, H = 190, PL = 12, PR = 12, PT = 24, PB = 30;
   const max = Math.max(...daily.map(d => d.originalLoss), 1);
-  const x = i => daily.length === 1 ? W / 2 : P + i * (W - P * 2) / (daily.length - 1);
-  const y = v => H - P - (v / max) * (H - P * 2);
+  const x = i => daily.length === 1 ? W/2 : PL + i * (W - PL - PR) / (daily.length - 1);
+  const y = v => PT + (1 - v / max) * (H - PT - PB);
 
-  const pts = daily.map((d, i) => x(i) + ',' + y(d.originalLoss)).join(' ');
-  const dots = daily.map((d, i) =>
-    `<circle cx="${x(i)}" cy="${y(d.originalLoss)}" r="3.5" fill="var(--magenta)"/>` +
-    `<text x="${x(i)}" y="${y(d.originalLoss) - 9}" fill="var(--dim)" font-size="9" text-anchor="middle">` +
-      (d.originalLoss / 1000).toFixed(0) + 'k</text>' +
-    `<text x="${x(i)}" y="${H - 9}" fill="var(--dim2)" font-size="9" text-anchor="middle">` +
-      d.lossDate.slice(5) + '</text>').join('');
+  const pts  = daily.map((d, i) => x(i) + ',' + y(d.originalLoss)).join(' ');
+  const area = `${x(0)},${H-PB} ${pts} ${x(daily.length-1)},${H-PB}`;
+  const dots = daily.map((d, i) => `
+    <circle cx="${x(i)}" cy="${y(d.originalLoss)}" r="4" fill="var(--surface)" stroke="var(--hot)" stroke-width="2.5"/>
+    <text x="${x(i)}" y="${y(d.originalLoss) - 11}" fill="var(--txt)" font-size="10" font-weight="700" text-anchor="middle">${(d.originalLoss/10000).toFixed(1)}만</text>
+    <text x="${x(i)}" y="${H - 9}" fill="var(--dim2)" font-size="10" text-anchor="middle">${d.lossDate.slice(5)}</text>`).join('');
 
   const wrap = document.createElement('div');
-  wrap.innerHTML =
-    `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">
-       <line x1="${P}" y1="${H - P}" x2="${W - P}" y2="${H - P}" stroke="var(--line)"/>
-       <polyline points="${pts}" fill="none" stroke="var(--magenta)" stroke-width="2"/>
-       ${dots}
-     </svg>
-     <div class="dnote">
-       7일 합계 정가 −${num(totals.originalLoss)}원 · 시장가 −${num(totals.marketLoss)}원<br>
-       시장에 나오지도 못하고 소멸한 건 ${totals.neverListedCount}건
-     </div>`;
+  wrap.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;overflow:visible">
+      <defs><linearGradient id="lg" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="var(--hot)" stop-opacity=".26"/>
+        <stop offset="100%" stop-color="var(--hot)" stop-opacity="0"/></linearGradient></defs>
+      <line x1="${PL}" y1="${H-PB}" x2="${W-PR}" y2="${H-PB}" stroke="var(--line)"/>
+      <polygon points="${area}" fill="url(#lg)"/>
+      <polyline points="${pts}" fill="none" stroke="var(--hot)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+      ${dots}
+    </svg>
+    <div class="note">
+      7일 합계 — 정가 기준 <b style="color:var(--hot)">−${won(totals.originalLoss)}</b> · 시장가 기준 −${won(totals.marketLoss)}<br>
+      시장에 나오지도 못하고 소멸한 건 <b>${totals.neverListedCount}건</b>. 두 숫자의 차이가 “팔 기회조차 없던 손실”입니다.</div>`;
   return wrap;
 }
 
-/* ─────────────────────────────────────────────────────────
-   검증 · 동시성
-   ───────────────────────────────────────────────────────── */
-$('btn-integ').onclick = async () => {
+/* ═══════════════════════════════════════════════════════════
+   13. 운영 검증
+   ═══════════════════════════════════════════════════════════ */
+function viewOps() {
+  $('view').innerHTML = `
+    <div class="sec-h"><h2>🔍 운영 검증</h2>
+      <span class="desc">돈이 새지 않았는지, 동시 요청에도 규칙이 지켜지는지</span></div>
+
+    <section class="sec">
+      <div class="panel pad">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button class="btn primary" id="btn-integ" onclick="runIntegrity()">정합성 검증 실행</button>
+          <span id="integ-badge"></span>
+        </div>
+        <div class="note" style="border-top:0;padding-top:8px">
+          ① 회원별 잔액 = 원장 합 · ② 전체 차변 = 대변 · ③ ESCROW_POOL 잔액 = 보관 중 거래액 합
+        </div>
+        <pre id="integ-out" hidden></pre>
+      </div>
+    </section>
+
+    <section class="sec">
+      <div class="sec-h"><h2 style="font-size:15px">⚡ 동시성 테스트 — 같은 매물에 20개 스레드가 동시에 예약</h2></div>
+      <div class="panel pad">
+        <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+          <span style="font-size:12.5px;font-weight:700">대상 판매 ID</span>
+          <input id="conc-id" type="number" value="4" style="width:78px;height:36px;border-radius:9px;border:1px solid var(--line2);background:var(--surface2);padding:0 10px">
+          <button class="btn danger" id="btn-nolock" onclick="runConc(false,this)">락 없이 20건 발사</button>
+          <button class="btn primary" id="btn-lock" onclick="runConc(true,this)">락 적용 20건 발사</button>
+          <span class="muted" id="conc-note" style="font-size:12px"></span>
+        </div>
+        <div class="note" style="border-top:0;padding-top:6px">
+          바뀌는 건 조회에 락을 거느냐 뿐이고 나머지 코드 경로는 완전히 같습니다.
+          <b>ledgerBalanced</b>를 같이 보세요 — 중복 예약이 생겨도 원장은 맞습니다.
+          돈이 맞는 것과 도메인 규칙이 지켜지는 것은 다른 문제입니다.
+        </div>
+        <div class="cmp" style="margin-top:12px">
+          <div><h4>🔓 락 없음</h4><pre id="out-nolock" hidden></pre></div>
+          <div><h4>🔒 락 적용</h4><pre id="out-lock" hidden></pre></div>
+        </div>
+      </div>
+    </section>`;
+}
+
+async function runIntegrity() {
   const r = await api('/api/admin/integrity-check');
   const d = r.body || {};
-  $('integ-badge').innerHTML =
-    '<span class="verdict ' + (d.passed ? 'pass' : 'fail') + '">' +
-    (d.passed ? '✓ PASS — 돈이 새지 않았습니다' : '✗ FAIL — 어딘가 어긋났습니다') + '</span>';
-  const out = $('integ-out');
-  out.hidden = false;
-  out.textContent = j(d);
-};
+  $('integ-badge').innerHTML = `<span class="verdict ${d.passed ? 'pass' : 'fail'}">${
+    d.passed ? '✓ PASS — 돈이 한 푼도 새지 않았습니다' : '✗ FAIL — 어딘가 어긋났습니다'}</span>`;
+  const out = $('integ-out'); out.hidden = false; out.textContent = j(d);
+}
 
-async function runConcurrency(useLock, outId, btn) {
+async function runConc(useLock, btn) {
+  const listingId = Number($('conc-id').value) || 4;
   btn.disabled = true;
   $('conc-note').textContent = '발사 중…';
-  const r = await api('/api/admin/simulate-concurrent', {
-    method: 'POST',
-    body: JSON.stringify({ listingId: 4, threadCount: 20, useLock }),
-  });
-  const out = $(outId);
+  const r = await post('/api/admin/simulate-concurrent', { listingId, threadCount: 20, useLock });
+  const out = $(useLock ? 'out-lock' : 'out-nolock');
   out.hidden = false;
   out.textContent = r.ok ? j(r.body) : j(r.raw);
   $('conc-note').textContent = r.ok
     ? '끝나면 만들어진 예약을 전액 환불로 되돌리므로 몇 번이든 다시 돌릴 수 있습니다.'
-    : '판매 4번이 OPEN이 아니면 실행되지 않습니다.';
+    : (r.msg || '해당 판매 건이 OPEN이 아니면 실행되지 않습니다.');
   btn.disabled = false;
   loadSummary();
 }
 
-$('btn-nolock').onclick = e => runConcurrency(false, 'out-nolock', e.target);
-$('btn-lock').onclick   = e => runConcurrency(true,  'out-lock',   e.target);
-
-/* ─────────────────────────────────────────────────────────
-   로그인 — 알림 폴링에 필요
-   ───────────────────────────────────────────────────────── */
-let me = null;
-
-$('btn-login').onclick = async () => {
-  const id = $('who').value;
-  if (!id) {
-    await api('/api/members/logout', { method: 'POST' });
-    me = null;
-    $('me').textContent = '';
-    return;
-  }
-  const r = await api('/api/members/login', {
-    method: 'POST',
-    body: JSON.stringify({ id, password: 'pass1234' }),
-  });
-  me = r.ok ? id : null;
-  $('me').textContent = r.ok ? '' : '로그인 실패';
-  loadNotifications();
-  Object.keys(detailCache).forEach(k => delete detailCache[k]);  // 예약 현황 열람 권한이 바뀐다
-  openIds.forEach(id2 => { const l = listings.find(x => x.id === id2); if (l) loadDetail(l); });
-};
-
-async function loadNotifications() {
-  if (!me) return;
-  const r = await api('/api/members/' + me + '/notifications/unread-count');
-  if (r.ok) $('me').textContent = me + ' · 안읽음 ' + (r.body ?? 0) + '건';
-}
-
-/* ─────────────────────────────────────────────────────────
-   구동
-   ───────────────────────────────────────────────────────── */
-function refresh() {
-  loadSummary();
-  loadListings();
-  loadCharts();
-  loadNotifications();
-}
-
-renderTabs();
-refresh();
-setInterval(tickCountdowns, 1000);   // 카운트다운은 1초
-setInterval(refresh, 5000);          // 데이터 갱신은 5초
+/* ═══════════════════════════════════════════════════════════
+   14. 구동
+   ═══════════════════════════════════════════════════════════ */
+(async function boot() {
+  renderNav(); renderCats(); renderView();
+  await Promise.all([loadSummary(), loadListings()]);
+  setInterval(tickCountdowns, 1000);
+  setInterval(refresh, 5000);
+})();
 </script>
 </body>
 </html>
