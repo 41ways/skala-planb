@@ -83,6 +83,41 @@ public class Ticket {
     @Column(name = "quantity", nullable = false)
     private Integer quantity;
 
+    /**
+     * 좌석·구역 표기. 카테고리마다 형식이 다르다.
+     *
+     * <pre>
+     *   항공   27A, 27B          기차     4호차 12석
+     *   영화   2관 H열 7·8번      콘서트   FLOOR A구역 12열
+     *   전시·호텔·기프티콘  보통 없음 (null)
+     * </pre>
+     *
+     * <p><b>왜 항공 전용 필드가 아니라 범용인가.</b> 좌석이라는 개념은 항공에만 있는 게
+     * 아니고 표기 형식만 다르다. 카테고리마다 필드를 따로 두면 8개 카테고리에 8개 필드가
+     * 붙고, 조회할 때마다 "이 카테고리는 어느 필드를 봐야 하나"라는 분기가 생긴다.
+     * 하나로 두면 화면은 그냥 있으면 보여주고 없으면 건너뛰면 된다.
+     *
+     * <p>구조화(좌석 테이블 분리)까지 가지 않은 이유: 이 프로젝트는 티켓을 <b>통째로</b>
+     * 양도한다. 좌석 단위로 나눠 팔지 않으므로 좌석은 계산에 쓰이지 않고 표시만 된다.
+     * 계산에 안 쓰는 값을 구조화하는 건 비용만 늘린다.
+     */
+    @Column(name = "seat_info", length = 100)
+    private String seatInfo;
+
+    /**
+     * 양도 시 함께 넘어가는 적립 마일. 항공권에만 의미가 있다.
+     *
+     * <p><b>돈이 아니다.</b> 원장에 안 들어가고 잔액·정산·정합성 검증 어디에도 관여하지
+     * 않는다. 티켓에 딸려 오는 부가 가치를 <b>구매자가 판단할 재료로</b> 보여줄 뿐이다.
+     *
+     * <p>마일로 결제까지 하게 하려면 원장에 통화 축이 필요하다. 지금 원장은
+     * "이체 1건 = DEBIT 1줄 + CREDIT 1줄, 전체 차대 0"이라는 항등식 위에 서 있는데,
+     * 통화가 둘이 되면 그 항등식이 통화별로 갈라지고 정합성 검증·동시성 검증을
+     * 전부 다시 짜야 한다. 표시용으로 두는 한 그 위험이 없다.
+     */
+    @Column(name = "mileage")
+    private Long mileage;
+
     /** POINT_IN_TIME용 — 공연·상영·출발 시각 */
     @Column(name = "event_at")
     private LocalDateTime eventAt;
@@ -196,13 +231,16 @@ public class Ticket {
      * 날짜 필드가 통째로 달라짐. 그건 수정이라기보다 다른 티켓이라, 지우고 새로 등록하는 게 맞음.
      */
     public void modify(String title, Long originalPrice, Integer quantity,
-                       LocalDateTime eventAt, LocalDate validFrom, LocalDate validUntil) {
+                       LocalDateTime eventAt, LocalDate validFrom, LocalDate validUntil,
+                       String seatInfo, Long mileage) {
         this.title = title;
         this.originalPrice = originalPrice;
         this.quantity = quantity;
         this.eventAt = eventAt;
         this.validFrom = validFrom;
         this.validUntil = validUntil;
+        this.seatInfo = seatInfo;
+        this.mileage = mileage;
         refreshDerived();
     }
 

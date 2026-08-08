@@ -28,6 +28,14 @@ public record TicketResponse(
         String title,
         Long originalPrice,
         Integer quantity,
+
+        @Schema(description = "좌석·구역 표기. 카테고리마다 형식이 다르고 없으면 null",
+                example = "27A, 27B")
+        String seatInfo,
+
+        @Schema(description = "양도 시 함께 넘어가는 적립 마일. 항공권에만 의미가 있음",
+                example = "1250")
+        Long mileage,
         LocalDateTime eventAt,
         LocalDate validFrom,
         LocalDate validUntil,
@@ -54,6 +62,8 @@ public record TicketResponse(
                 ticket.getTitle(),
                 ticket.getOriginalPrice(),
                 ticket.getQuantity(),
+                ticket.getSeatInfo(),
+                ticket.getMileage(),
                 ticket.getEventAt(),
                 ticket.getValidFrom(),
                 ticket.getValidUntil(),

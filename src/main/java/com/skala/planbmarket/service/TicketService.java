@@ -60,6 +60,8 @@ public class TicketService {
                 .title(request.title())
                 .originalPrice(request.originalPrice())
                 .quantity(request.quantity())
+                .seatInfo(request.seatInfo())
+                .mileage(request.mileage())
                 .eventAt(request.eventAt())
                 .validFrom(request.validFrom())
                 .validUntil(request.validUntil())
@@ -94,7 +96,8 @@ public class TicketService {
         validateDates(ticket.getCategory(), request.eventAt(), request.validFrom(), request.validUntil());
 
         ticket.modify(request.title(), request.originalPrice(), request.quantity(),
-                request.eventAt(), request.validFrom(), request.validUntil());
+                request.eventAt(), request.validFrom(), request.validUntil(),
+                request.seatInfo(), request.mileage());
 
         // 저장 시점의 @PreUpdate에서 expiresAt이 다시 계산됨
         return TicketResponse.from(ticket);

@@ -12,6 +12,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
 /**
@@ -45,6 +46,14 @@ public final class TicketRequests {
             @Max(value = 2, message = "수량은 1 또는 2여야 합니다")
             Integer quantity,
 
+            @Schema(description = "좌석·구역 표기. 선택 (항공 '27A, 27B' / 기차 '4호차 12석' / 영화 '2관 H열')")
+            @Size(max = 100, message = "좌석 표기는 100자를 넘을 수 없습니다")
+            String seatInfo,
+
+            @Schema(description = "양도 시 함께 넘어가는 적립 마일. 항공권용, 선택")
+            @PositiveOrZero(message = "마일은 0 이상이어야 합니다")
+            Long mileage,
+
             @Schema(description = "시점 만료 카테고리(영화·콘서트·스포츠·기차·항공)에서 필수")
             @Future(message = "이미 지난 시각으로는 등록할 수 없습니다")
             LocalDateTime eventAt,
@@ -71,6 +80,14 @@ public final class TicketRequests {
             @Min(value = 1, message = "수량은 1 또는 2여야 합니다")
             @Max(value = 2, message = "수량은 1 또는 2여야 합니다")
             Integer quantity,
+
+            @Schema(description = "좌석·구역 표기. 선택 (항공 '27A, 27B' / 기차 '4호차 12석' / 영화 '2관 H열')")
+            @Size(max = 100, message = "좌석 표기는 100자를 넘을 수 없습니다")
+            String seatInfo,
+
+            @Schema(description = "양도 시 함께 넘어가는 적립 마일. 항공권용, 선택")
+            @PositiveOrZero(message = "마일은 0 이상이어야 합니다")
+            Long mileage,
 
             @Future(message = "이미 지난 시각으로는 수정할 수 없습니다")
             LocalDateTime eventAt,
