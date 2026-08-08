@@ -9,9 +9,66 @@
 
 저장소 루트가 곧 프로젝트다. 하위 디렉터리로 들어갈 필요 없음.
 
+### 맥 · 리눅스 (제출·캡처는 여기서)
+
 ```bash
 ./gradlew bootRun
 ```
+
+```bash
+./scripts/verify.sh
+```
+
+Gradle은 따로 설치할 필요 없다 — 래퍼가 알아서 받는다. **Java 21만 있으면 된다.**
+
+```bash
+java -version
+```
+
+없으면 (Homebrew):
+
+```bash
+brew install --cask temurin@21
+```
+
+`verify.sh`는 `curl`·`python3`를 쓴다. 둘 다 맥 기본이지만 `python3`가 처음이면
+Xcode Command Line Tools 설치를 물어볼 수 있다 — 승인하면 된다.
+
+> 저장소에 `gradlew`와 `scripts/verify.sh`가 **실행 권한(755)** 과 **LF 줄바꿈**으로
+> 들어가 있어서 클론하면 바로 실행된다. `.gitattributes`가 이걸 못박아 둔다 —
+> CRLF로 넘어가면 맥 bash가 ``을 명령어 일부로 읽어서 빌드가 시작조차 못 한다.
+
+### 윈도우 CMD
+
+cmd에서는 `./gradlew`가 안 된다. `.`을 명령어로 읽어서
+`'.'은(는) 내부 또는 외부 명령... 이 아닙니다`가 뜬다. 그래서 배치 파일을 뒀다.
+
+```bash
+run.bat
+```
+
+```bash
+verify.bat
+```
+
+- `run.bat` — 프로젝트 폴더로 이동 → 앱 실행 → 뜨면 브라우저 자동으로 열어줌.
+  더블클릭해도 되고 어느 경로에서 실행해도 된다
+- `verify.bat` — Git Bash를 찾아 `verify.sh`를 대신 돌린다. 앱이 안 떠 있으면
+  먼저 알려준다 (안 그러면 전부 실패로 떠서 코드가 깨진 줄 알게 됨)
+
+> **두 배치 파일은 CP949로 저장돼 있다.** UTF-8로 저장하면 cmd가 한글 주석의
+> 바이트를 명령어로 잘못 읽어서 실행 자체가 깨진다. `.gitattributes`의
+> `*.bat -text`가 git이 바이트를 건드리지 않게 막는다.
+
+### 윈도우 Git Bash
+
+맥과 같되 `./`가 꼭 필요하다. 없으면 `command not found`.
+
+```bash
+cd ~/skala-planb && ./gradlew bootRun
+```
+
+### 주소
 
 | 주소 | 용도 |
 |---|---|
@@ -20,19 +77,14 @@
 | `http://localhost:8080/actuator/health` | 커스텀 HealthIndicator 2종 |
 | `http://localhost:8080/h2-console` | DB 콘솔 (JDBC URL을 **`jdbc:h2:mem:planb`** 로 바꿀 것, 사용자 `sa`, 비번 없음) |
 
-전체 시나리오 검증:
-
-```bash
-./scripts/verify.sh
-```
-
 시연 계정은 `user01` ~ `user05`, 비밀번호 전부 `pass1234`.
 
-**인메모리 H2라 앱을 끄면 데이터가 사라짐.** `data.sql`이 매번 다시 깔리므로 검증 스크립트는 앱을 새로 띄운 뒤 한 번만 돌릴 것 (데이터를 실제로 바꿈).
+**인메모리 H2라 앱을 끄면 데이터가 사라짐.** `data.sql`이 매번 다시 깔리므로 검증
+스크립트는 앱을 새로 띄운 뒤 한 번만 돌릴 것 (데이터를 실제로 바꿈).
 
 ### 개발 환경
 - Java 21 (Temurin), Spring Boot 3.3.5, Gradle 8.14.5 (wrapper 포함)
-- 다른 컴퓨터에서도 `./gradlew` 로 바로 됨. Gradle 별도 설치 불필요
+- 윈도우에서 만들었고 맥에서 제출·캡처. 줄바꿈·실행권한은 `.gitattributes`가 맞춰 둠
 
 ---
 
