@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PlanB Market — 카테고리별 실물 티켓 시안</title>
+<!--
+  미리보기 전용. 실제 서비스(/)는 건드리지 않았다.
+
+  공통 골격: [본권] + [절취선·노치] + [스텁]. 높이 200px 고정, 라운드 14px,
+  스텁 폭 132px, 스텁 안의 카운트다운·가격 타이포는 8종 전부 동일하다.
+  달라지는 건 본권의 표면 어법뿐 — 실제 영화표·항공권·승차권이 서로 다르게 생긴 만큼만.
+
+  이미지·폰트·아이콘 전부 외부 의존 없음. 바코드·QR·스캘럽·관중 실루엣은 CSS로 그렸다.
+-->
+<style>
+/* ══════════════════════════════════════════════════════════
+   0. 공통 토큰 — 8종이 전부 이것만 쓴다
+   ══════════════════════════════════════════════════════════ */
+:root{
+  --bg:#f4f5f8; --surface:#fff; --surface2:#f7f8fb; --surface3:#eef0f5;
+  --rule:#e4e7ef; --rule2:#d5dae5;
+  --ink:#141824; --dim:#68738a; --dim2:#98a1b3;
+
+  --c-movie:#5b6ee1; --c-concert:#d1517f; --c-sports:#2f9e73; --c-exhibition:#cf8a2e;
+  --c-train:#3b83c9; --c-flight:#2a9db0; --c-hotel:#7d5fd0; --c-gifticon:#d2634a;
+
+  --hot:#dc3a56; --warn:#c07d13; --ok:#1c9478;
+
+  --r-card:14px; --r-in:9px; --r-pill:999px;
+  --sh1:0 1px 2px rgba(20,30,60,.05);
+  --sh2:0 2px 8px rgba(20,30,60,.06), 0 14px 32px rgba(20,30,60,.07);
+  --tkt-h:200px; --stub-w:132px;
+  --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0; background:#e9ebf0; color:var(--ink);
+  font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif; font-size:14px; line-height:1.55}
+.page{max-width:1180px; margin:0 auto; padding:34px 22px 80px}
+.lead h1{font-size:27px; margin:0 0 6px; letter-spacing:-1px}
+.lead p{margin:0; color:var(--dim); font-size:14px; line-height:1.7}
+.lead .warn{margin-top:12px; background:#fff; border-left:3px solid var(--c-movie); padding:11px 14px; border-radius:0 10px 10px 0; font-size:13px}
+
+.block{margin-top:26px; background:#fff; border-radius:20px; overflow:hidden; box-shadow:var(--sh2)}
+.blabel{display:flex; align-items:baseline; gap:11px; padding:16px 22px 13px; border-bottom:1px solid var(--rule); flex-wrap:wrap}
+.blabel .n{padding:4px 10px; border-radius:8px; background:var(--ink); color:#fff; font-size:11.5px; font-weight:800}
+.blabel h2{margin:0; font-size:17.5px; letter-spacing:-.6px}
+.blabel .kw{font-size:12.5px; color:var(--dim2)}
+.blabel .ref{margin-left:auto; font-size:11.5px; color:var(--dim2)}
+.bnote{padding:12px 22px; background:var(--surface2); border-top:1px solid var(--rule); font-size:12.5px; color:var(--dim); line-height:1.75}
+.bnote b{color:var(--ink)}
+.stage{background:var(--bg); padding:20px 22px 24px}
+.pair{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+@media(max-width:980px){.pair{grid-template-columns:1fr}}
+
+/* 공통 껍데기 — 어느 카테고리에서도 동일 */
+.hd{display:flex; align-items:center; gap:15px; background:var(--surface); border:1px solid var(--rule);
+    border-radius:var(--r-card); padding:9px 15px; margin-bottom:12px}
+.hd .logo{display:flex; align-items:center; gap:9px; font-size:18px; font-weight:800; letter-spacing:-.8px}
+.hd .logo i{width:30px; height:30px; border-radius:10px; font-style:normal; font-size:15px; display:grid; place-items:center;
+  background:linear-gradient(135deg,var(--c-movie),var(--c-hotel))}
+.hd .menu{display:flex; gap:3px; font-size:13px; font-weight:700; color:var(--dim)}
+.hd .menu span{padding:6px 11px; border-radius:9px}
+.hd .menu .on{background:var(--surface3); color:var(--ink)}
+.hd .rt{margin-left:auto; font-size:12.5px; color:var(--dim)}
+.cbar{display:flex; gap:6px; overflow:auto; padding-bottom:13px}
+.cbar span{flex-shrink:0; padding:6px 12px; border-radius:var(--r-pill); font-size:12.5px; font-weight:600;
+  border:1px solid var(--rule); background:var(--surface); color:var(--dim)}
+.cbar .on{background:var(--acc); border-color:var(--acc); color:#fff; font-weight:700}
+.ban{position:relative; overflow:hidden; border-radius:var(--r-card); padding:18px 20px; color:#fff; margin-bottom:11px;
+  background:linear-gradient(120deg, var(--acc), color-mix(in srgb, var(--acc) 55%, #1b2233))}
+.ban .emo{position:absolute; right:14px; bottom:-20px; font-size:88px; opacity:.16; line-height:1}
+.ban .kk{font-size:10.5px; font-weight:800; letter-spacing:1.4px; opacity:.85}
+.ban h3{margin:6px 0 0; font-size:21px; font-weight:800; letter-spacing:-.8px}
+.ban p{margin:5px 0 0; font-size:12.5px; opacity:.9; max-width:620px}
+.stats{display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--rule);
+  border:1px solid var(--rule); border-radius:var(--r-card); overflow:hidden; margin-bottom:14px}
+.stats > div{background:var(--surface); padding:11px 14px}
+.stats .k{font-size:11px; color:var(--dim2); font-weight:600}
+.stats .v{font-size:18px; font-weight:800; letter-spacing:-.7px; margin-top:2px; font-variant-numeric:tabular-nums}
+.stats .v.acc{color:var(--acc)}
+
+/* ══════════════════════════════════════════════════════════
+   1. 티켓 공통 골격 — 8종이 공유
+   ══════════════════════════════════════════════════════════ */
+.tkt{
+  position:relative; display:flex; height:var(--tkt-h); border-radius:var(--r-card);
+  overflow:hidden; box-shadow:var(--sh1); background:var(--surface);
+}
+.tkt .body{flex:1; min-width:0; position:relative; overflow:hidden}
+.tkt .stub{
+  width:var(--stub-w); flex-shrink:0; position:relative; overflow:hidden;
+  padding:14px 13px; display:flex; flex-direction:column; justify-content:space-between; text-align:right;
+}
+/* 절취선 + 위아래 노치 — 8종 전부 같은 자리 */
+.tkt .perf{position:absolute; top:0; bottom:0; right:var(--stub-w); width:0;
+  border-left:1.5px dashed var(--pf,rgba(0,0,0,.18)); z-index:3}
+.tkt .perf::before,.tkt .perf::after{content:''; position:absolute; left:-8px; width:16px; height:16px;
+  border-radius:50%; background:var(--bg)}
+.tkt .perf::before{top:-8px} .tkt .perf::after{bottom:-8px}
+
+/* 스텁 안의 정보는 8종 전부 동일한 타이포 */
+.tkt .cd{font-size:21px; font-weight:800; letter-spacing:-.8px; font-family:var(--mono); line-height:1.1}
+.tkt .cdl{font-size:9px; letter-spacing:1.1px; opacity:.62; margin-top:3px}
+.tkt .was{font-size:10.5px; opacity:.55; text-decoration:line-through; font-family:var(--mono)}
+.tkt .now{font-size:17px; font-weight:800; letter-spacing:-.6px; font-family:var(--mono)}
+.tkt .off{display:inline-block; font-size:9.5px; font-weight:800; padding:1px 6px; border-radius:4px; margin-top:4px}
+
+/* 재료 — 바코드 / QR / 관중 / 필름 */
+.bc{background-image:repeating-linear-gradient(90deg,
+  var(--bcc,#15181f) 0 1px, transparent 1px 3px, var(--bcc,#15181f) 3px 5px,
+  transparent 5px 6px, var(--bcc,#15181f) 6px 7px, transparent 7px 10px)}
+.bcv{background-image:repeating-linear-gradient(180deg,
+  var(--bcc,#15181f) 0 1px, transparent 1px 3px, var(--bcc,#15181f) 3px 5px,
+  transparent 5px 6px, var(--bcc,#15181f) 6px 7px, transparent 7px 10px)}
+.qr{width:40px; height:40px; background-color:transparent;
+  background-image:
+    linear-gradient(var(--qc,#2c3a2e) 0 0), linear-gradient(var(--qc,#2c3a2e) 0 0),
+    linear-gradient(var(--qc,#2c3a2e) 0 0), linear-gradient(var(--qc,#2c3a2e) 0 0),
+    linear-gradient(var(--qc,#2c3a2e) 0 0), linear-gradient(var(--qc,#2c3a2e) 0 0),
+    linear-gradient(var(--qc,#2c3a2e) 0 0), linear-gradient(var(--qc,#2c3a2e) 0 0);
+  background-repeat:no-repeat;
+  background-size:12px 12px, 12px 12px, 12px 12px, 5px 5px, 5px 5px, 8px 4px, 4px 8px, 6px 6px;
+  background-position:0 0, 28px 0, 0 28px, 4px 4px, 32px 4px, 16px 16px, 26px 20px, 30px 30px;
+}
+
+/* ══════════════════════════════════════════════════════════
+   2. 영화 — 다크 차콜 + 레드, ADMIT ONE, 필름 스트립, 스캘럽
+   ══════════════════════════════════════════════════════════ */
+.t-movie{--pf:rgba(255,255,255,.28)}
+.t-movie .body{background:#2a2e3a; color:#f2f0eb; padding:15px 16px}
+.t-movie .frame{position:absolute; inset:8px; border:1px solid rgba(255,255,255,.16); border-radius:9px; pointer-events:none}
+.t-movie .stars{font-size:9px; letter-spacing:3px; color:#e2513f}
+.t-movie .wm{font-size:15px; font-weight:900; letter-spacing:-.3px; color:#e2513f; margin-top:6px; line-height:1}
+.t-movie .adm{font-size:8.5px; letter-spacing:2.4px; color:rgba(255,255,255,.5); margin-top:4px}
+.t-movie .ttl{font-size:16px; font-weight:800; letter-spacing:-.5px; margin-top:11px; line-height:1.35}
+.t-movie .seat{font-size:10.5px; font-family:var(--mono); color:rgba(255,255,255,.62); margin-top:8px}
+.t-movie .film{position:absolute; left:16px; bottom:14px; width:34px; height:22px; border-radius:3px; background:#15181f;
+  background-image:repeating-linear-gradient(90deg,#f2f0eb 0 3px,transparent 3px 7px),
+                   repeating-linear-gradient(90deg,#f2f0eb 0 3px,transparent 3px 7px);
+  background-size:100% 3px,100% 3px; background-position:0 2px,0 17px; background-repeat:repeat-x}
+.t-movie .film::after{content:'▶'; position:absolute; inset:0; display:grid; place-items:center; font-size:9px; color:#f2f0eb}
+.t-movie .stub{background:#efece2; color:#22252d}
+.t-movie .stub .bcv{position:absolute; left:11px; top:14px; bottom:14px; width:26px; --bcc:#22252d}
+.t-movie .off{background:#e2513f; color:#fff}
+/* 왼쪽 스캘럽 — 실물 표의 뜯긴 가장자리 */
+.t-movie .body{
+  -webkit-mask:radial-gradient(circle 5px at 0 6px, transparent 5px, #000 5.5px) 0 0/100% 12px repeat-y;
+          mask:radial-gradient(circle 5px at 0 6px, transparent 5px, #000 5.5px) 0 0/100% 12px repeat-y;
+}
+
+/* ══════════════════════════════════════════════════════════
+   3. 콘서트 — 풀블리드 비비드 + 관중 실루엣 + 좌석 필드
+   ══════════════════════════════════════════════════════════ */
+.t-concert{--pf:rgba(255,255,255,.34)}
+.t-concert .body{color:#fff; padding:15px 16px;
+  background:linear-gradient(115deg, color-mix(in srgb,var(--c-concert) 92%, #2a1030), #2a1a40)}
+.t-concert .crowd{position:absolute; left:0; right:0; bottom:0; height:46px; opacity:.55;
+  background-image:
+    radial-gradient(circle 8px at 13px 30px, #12081c 98%, transparent 100%),
+    radial-gradient(circle 6px at 9px 36px, #12081c 98%, transparent 100%);
+  background-size:27px 46px, 19px 46px; background-repeat:repeat-x}
+.t-concert .kk{font-size:9px; font-weight:800; letter-spacing:2px; color:#ffd9e6}
+.t-concert .ttl{font-size:19px; font-weight:900; letter-spacing:-.7px; margin-top:8px; line-height:1.2; position:relative; z-index:1}
+.t-concert .sub{font-size:10.5px; opacity:.82; margin-top:5px; font-family:var(--mono); position:relative; z-index:1}
+.t-concert .fields{position:absolute; left:16px; right:16px; bottom:13px; display:flex; gap:6px; z-index:2}
+.t-concert .fields div{flex:1; background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.24);
+  border-radius:var(--r-pill); padding:4px 8px; text-align:center}
+.t-concert .fields i{display:block; font-style:normal; font-size:7.5px; letter-spacing:1px; opacity:.8}
+.t-concert .fields b{font-size:11px; font-weight:800; font-family:var(--mono)}
+.t-concert .stub{background:#241436; color:#fff}
+.t-concert .stub .vert{position:absolute; left:12px; top:14px; bottom:14px; writing-mode:vertical-rl;
+  font-size:8.5px; letter-spacing:2.4px; color:rgba(255,255,255,.42); font-weight:700}
+.t-concert .cd{color:#ff7d9c} .t-concert .off{background:#ff7d9c; color:#241436}
+
+/* ══════════════════════════════════════════════════════════
+   4. 스포츠 — 네이비·레드·화이트, 별 띠, SEC/ROW/SEAT
+   ══════════════════════════════════════════════════════════ */
+.t-sports{--pf:rgba(0,0,0,.2)}
+.t-sports .body{background:#fff; padding:0}
+.t-sports .starbar{height:16px; background:#1b2a5c; color:#fff; font-size:8px; letter-spacing:4px;
+  display:flex; align-items:center; padding:0 14px}
+.t-sports .in{padding:11px 15px}
+.t-sports .adm{font-size:9px; font-weight:900; letter-spacing:2.2px; color:#c62b3d}
+.t-sports .ttl{font-size:18px; font-weight:900; letter-spacing:-.7px; margin-top:6px; color:#1b2a5c; line-height:1.25}
+.t-sports .vs{font-size:10.5px; color:var(--dim); margin-top:5px; font-family:var(--mono)}
+.t-sports .boxes{display:flex; gap:6px; margin-top:11px}
+.t-sports .boxes div{flex:1; border:1.5px solid #1b2a5c; border-radius:5px; padding:3px 6px; text-align:center}
+.t-sports .boxes i{display:block; font-style:normal; font-size:7.5px; letter-spacing:1.2px; color:#7c88a8}
+.t-sports .boxes b{font-size:12px; font-weight:900; color:#1b2a5c; font-family:var(--mono)}
+.t-sports .bc{position:absolute; left:15px; right:15px; bottom:11px; height:16px; --bcc:#1b2a5c}
+.t-sports .stub{background:#1b2a5c; color:#fff}
+.t-sports .stub .vert{position:absolute; left:11px; top:14px; bottom:14px; writing-mode:vertical-rl;
+  font-size:9px; font-weight:900; letter-spacing:3px; color:#c62b3d}
+.t-sports .cd{color:#fff} .t-sports .off{background:#c62b3d; color:#fff}
+
+/* ══════════════════════════════════════════════════════════
+   5. 항공 — 보딩패스. 블루 헤더바 + 라벨/값 필드 + 바코드
+   ══════════════════════════════════════════════════════════ */
+.t-flight{--pf:rgba(0,0,0,.18)}
+.t-flight .body{background:#fff; padding:0}
+.t-flight .hbar{height:24px; background:var(--c-flight); color:#fff; display:flex; align-items:center;
+  padding:0 15px; font-size:10px; font-weight:900; letter-spacing:2.4px}
+.t-flight .in{padding:12px 15px}
+.t-flight .route{font-size:26px; font-weight:900; letter-spacing:-1.4px; color:var(--c-flight); line-height:1;
+  display:flex; align-items:center; gap:9px}
+.t-flight .route small{font-size:15px; opacity:.7}
+.t-flight .ttl{font-size:11.5px; color:var(--dim); margin-top:5px; font-weight:600}
+.t-flight .fg{display:flex; gap:18px; margin-top:12px}
+.t-flight .fg div i{display:block; font-style:normal; font-size:8px; letter-spacing:1.2px; color:var(--dim2); font-weight:700}
+.t-flight .fg div b{font-size:15px; font-weight:900; color:#1b2430; font-family:var(--mono); letter-spacing:-.4px}
+.t-flight .bc{position:absolute; left:15px; right:15px; bottom:11px; height:18px; --bcc:#1b2430}
+.t-flight .plane{position:absolute; right:14px; top:34px; font-size:34px; opacity:.1; transform:rotate(-18deg)}
+.t-flight .stub{background:#f2f7f9; color:#12303a}
+.t-flight .stub .hbar2{position:absolute; left:0; right:0; top:0; height:24px; background:var(--c-flight);
+  color:#fff; font-size:8px; font-weight:900; letter-spacing:1.6px; display:grid; place-items:center}
+.t-flight .stub{padding-top:34px}
+.t-flight .off{background:var(--c-flight); color:#fff}
+
+/* ══════════════════════════════════════════════════════════
+   6. 기차 — 페일 민트 + 점선 테두리 + QR + 측면 노치
+   ══════════════════════════════════════════════════════════ */
+.t-train{--pf:rgba(44,58,46,.3)}
+.t-train .body{background:#eef4ea; color:#2c3a2e; padding:14px 16px}
+.t-train .dot{position:absolute; inset:7px; border:1.5px dotted rgba(44,58,46,.35); border-radius:8px; pointer-events:none}
+.t-train .kk{font-size:9px; font-weight:900; letter-spacing:2.4px; color:#5a7a5e}
+.t-train .top{display:flex; gap:12px; align-items:flex-start; margin-top:8px}
+.t-train .route{font-size:17px; font-weight:900; letter-spacing:-.6px; line-height:1.25}
+.t-train .times{font-size:10.5px; font-family:var(--mono); color:#5a7a5e; margin-top:5px}
+.t-train .meta{font-size:10px; font-family:var(--mono); color:#5a7a5e; margin-top:9px; line-height:1.8}
+.t-train .meta b{color:#2c3a2e}
+.t-train .stub{background:#e3ebde; color:#2c3a2e}
+.t-train .cd{color:#2c3a2e} .t-train .off{background:#2c3a2e; color:#eef4ea}
+/* 측면 반원 노치 */
+.t-train .body::before,.t-train .body::after{content:''; position:absolute; left:-9px; width:18px; height:18px;
+  border-radius:50%; background:var(--bg)}
+.t-train .body::before{top:calc(50% - 9px)} .t-train .body::after{display:none}
+
+/* ══════════════════════════════════════════════════════════
+   7. 전시 — 메가박스풍. 얇은 이중 프레임 + 폼 행 + 포스터 면
+   ══════════════════════════════════════════════════════════ */
+.t-exhibition{--pf:rgba(180,90,80,.32)}
+.t-exhibition .body{background:#fdf3f1; color:#8a3b34; padding:0; display:flex}
+.t-exhibition .form{flex:1; padding:13px 14px; position:relative}
+.t-exhibition .frame{position:absolute; inset:6px; border:1px solid rgba(180,90,80,.4); border-radius:7px; pointer-events:none}
+.t-exhibition .frame::after{content:''; position:absolute; inset:3px; border:1px solid rgba(180,90,80,.2); border-radius:5px}
+.t-exhibition .kk{font-size:8px; font-weight:800; letter-spacing:1.8px; opacity:.75}
+.t-exhibition .ttl{font-size:15.5px; font-weight:800; letter-spacing:-.4px; margin-top:8px; line-height:1.3; color:#7a2f29}
+.t-exhibition .rows{margin-top:10px}
+.t-exhibition .rows div{display:flex; align-items:baseline; gap:6px; font-size:10px; padding:3px 0;
+  border-bottom:1px dotted rgba(180,90,80,.32); font-family:var(--mono)}
+.t-exhibition .rows i{font-style:normal; width:46px; flex-shrink:0; opacity:.65; letter-spacing:.4px}
+.t-exhibition .rows b{font-weight:700; color:#7a2f29}
+.t-exhibition .poster{width:86px; flex-shrink:0; margin:7px 7px 7px 0; border-radius:6px; position:relative; overflow:hidden;
+  background:linear-gradient(160deg,#e8b4ac,#c97f76 55%,#8a3b34); display:grid; place-items:center; font-size:30px}
+.t-exhibition .poster span{opacity:.85}
+.t-exhibition .stub{background:#f7e6e3; color:#8a3b34}
+.t-exhibition .cd{color:#a8443c} .t-exhibition .off{background:#a8443c; color:#fdf3f1}
+/* 오른쪽 스캘럽 */
+.t-exhibition .stub{
+  -webkit-mask:radial-gradient(circle 5px at 100% 6px, transparent 5px, #000 5.5px) 0 0/100% 12px repeat-y;
+          mask:radial-gradient(circle 5px at 100% 6px, transparent 5px, #000 5.5px) 0 0/100% 12px repeat-y;
+}
+
+/* ══════════════════════════════════════════════════════════
+   8. 호텔 — 룸 키카드. 딥 바이올렛 + 체크인/아웃
+   ══════════════════════════════════════════════════════════ */
+.t-hotel{--pf:rgba(255,255,255,.3)}
+.t-hotel .body{color:#fff; padding:15px 16px;
+  background:linear-gradient(125deg, color-mix(in srgb,var(--c-hotel) 88%, #241344), #1b1230)}
+.t-hotel .body::after{content:''; position:absolute; right:-24px; top:-24px; width:130px; height:130px; border-radius:50%;
+  background:radial-gradient(circle at 40% 60%, rgba(255,255,255,.22), transparent 68%)}
+.t-hotel .kk{font-size:9px; font-weight:900; letter-spacing:2.4px; opacity:.75}
+.t-hotel .ttl{font-size:17px; font-weight:800; letter-spacing:-.6px; margin-top:8px; line-height:1.3; position:relative; z-index:1}
+.t-hotel .stay{display:flex; align-items:center; gap:11px; margin-top:13px; position:relative; z-index:1}
+.t-hotel .stay div i{display:block; font-style:normal; font-size:8px; letter-spacing:1.2px; opacity:.65; font-weight:700}
+.t-hotel .stay div b{font-size:14px; font-weight:800; font-family:var(--mono); letter-spacing:-.3px}
+.t-hotel .stay .arw{flex:1; height:1px; background:rgba(255,255,255,.3); position:relative}
+.t-hotel .stay .arw::after{content:'1박'; position:absolute; left:50%; top:-8px; transform:translateX(-50%);
+  font-size:8.5px; background:rgba(255,255,255,.16); padding:1px 7px; border-radius:var(--r-pill)}
+.t-hotel .chip{position:absolute; left:16px; bottom:14px; width:30px; height:22px; border-radius:4px;
+  background:linear-gradient(135deg,#e8d38a,#c9a44e); z-index:1;
+  background-image:linear-gradient(135deg,#e8d38a,#c9a44e),
+    repeating-linear-gradient(90deg, rgba(0,0,0,.22) 0 1px, transparent 1px 6px)}
+.t-hotel .rm{position:absolute; right:16px; bottom:14px; font-size:10px; font-family:var(--mono); opacity:.7; z-index:1}
+.t-hotel .stub{background:#1b1230; color:#fff}
+.t-hotel .cd{color:#c5aef5} .t-hotel .off{background:#c5aef5; color:#1b1230}
+
+/* ══════════════════════════════════════════════════════════
+   9. 기프티콘 — 교환권 쿠폰. 점선 + 상품 원 + 연장 뱃지
+   ══════════════════════════════════════════════════════════ */
+.t-gifticon{--pf:rgba(140,70,50,.3)}
+.t-gifticon .body{background:#fdf6ee; color:#6b3a24; padding:14px 16px; display:flex; gap:13px; align-items:center}
+.t-gifticon .dash{position:absolute; inset:7px; border:1.5px dashed rgba(160,90,60,.36); border-radius:8px; pointer-events:none}
+.t-gifticon .prod{width:62px; height:62px; border-radius:50%; flex-shrink:0; display:grid; place-items:center; font-size:30px;
+  background:linear-gradient(140deg,#fff,color-mix(in srgb,var(--c-gifticon) 16%, #fff));
+  border:1.5px solid color-mix(in srgb,var(--c-gifticon) 30%, #fff)}
+.t-gifticon .tx{min-width:0}
+.t-gifticon .kk{font-size:8.5px; font-weight:900; letter-spacing:2px; color:var(--c-gifticon)}
+.t-gifticon .ttl{font-size:15.5px; font-weight:800; letter-spacing:-.4px; margin-top:6px; line-height:1.3}
+.t-gifticon .exp{font-size:10.5px; font-family:var(--mono); color:#9b6b4f; margin-top:7px}
+.t-gifticon .exp s{opacity:.55}
+.t-gifticon .badge{display:inline-block; font-size:9px; font-weight:800; padding:2px 8px; border-radius:var(--r-pill);
+  background:color-mix(in srgb,var(--ok) 14%, #fff); color:var(--ok); margin-top:7px}
+.t-gifticon .stub{background:#f6ebdf; color:#6b3a24}
+.t-gifticon .stub .bcv{position:absolute; left:11px; top:14px; bottom:14px; width:24px; --bcc:#6b3a24}
+.t-gifticon .cd{color:#6b3a24} .t-gifticon .off{background:var(--c-gifticon); color:#fff}
+
+/* 캡션 */
+.cap{display:flex; align-items:baseline; gap:9px; margin:0 0 9px; padding:0 2px}
+.cap b{font-size:13.5px; letter-spacing:-.3px}
+.cap span{font-size:11.5px; color:var(--dim2)}
+.cap em{margin-left:auto; font-style:normal; font-size:11px; color:var(--dim2)}
+.slot{margin-bottom:20px}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="lead">
+    <h1>카테고리별 실물 티켓 시안</h1>
+    <p>주신 레퍼런스를 카테고리마다 하나씩 대응시켰습니다. 골격은 <b>본권 + 절취선 + 스텁</b>으로 8종이 완전히 같고,
+       높이 200px · 라운드 14px · 스텁 폭 132px · 스텁 안의 카운트다운·가격 타이포까지 동일합니다.
+       달라지는 건 <b>본권의 표면 어법</b>뿐입니다 — 실제 영화표와 항공권이 다르게 생긴 만큼만.</p>
+    <div class="warn">이미지·아이콘·폰트 <b>외부 파일 0개</b>입니다. 바코드·QR·스캘럽 가장자리·관중 실루엣·IC칩 전부 CSS로 그렸습니다.
+      기존 <b>/</b>, <b>/preview.html</b>, <b>/preview2.html</b> 은 그대로 있습니다.</div>
+  </div>
+
+  <!-- ═══ 실제 페이지에 놓였을 때 ═══ -->
+  <div class="block">
+    <div class="blabel"><span class="n">문맥</span><h2>카테고리 페이지에 놓으면 이렇게</h2>
+      <span class="kw">매물이 1~3건뿐이라 2열 와이드가 오히려 알맞습니다</span></div>
+    <div class="stage" style="--acc:var(--c-flight)">
+      <div class="hd">
+        <span class="logo"><i>🎟️</i>PlanB Market</span>
+        <span class="menu"><span class="on">마켓</span><span>마이페이지</span><span>마켓 리포트</span><span>운영 검증</span></span>
+        <span class="rt">538,475원 · 🔔</span>
+      </div>
+      <div class="cbar"><span>전체</span><span>🎬 영화</span><span>🎤 콘서트</span><span>⚾ 스포츠</span>
+        <span>🖼️ 전시</span><span>🚄 기차</span><span class="on">✈️ 항공</span><span>🏨 호텔</span><span>🎁 기프티콘</span></div>
+      <div class="ban"><div class="kk">POINT IN TIME · 시점 만료</div>
+        <h3>탑승 시각이 지나면 그대로 사라집니다</h3>
+        <p>좌석과 편명이 그대로 넘어가고 적립 마일도 함께 이전됩니다.</p><span class="emo">✈️</span></div>
+      <div class="stats">
+        <div><div class="k">실효율</div><div class="v acc">0.0%</div></div>
+        <div><div class="k">평균 거래가율</div><div class="v">68.4%</div></div>
+        <div><div class="k">누적 거래액</div><div class="v">62,900원</div></div>
+      </div>
+      <div class="pair">
+        <div class="tkt t-flight">
+          <div class="body">
+            <div class="hbar">AIR TICKET</div>
+            <div class="in">
+              <div class="route">GMP <small>✈</small> CJU</div>
+              <div class="ttl">제주항공 7C123 · 김포 → 제주</div>
+              <div class="fg">
+                <div><i>SEAT</i><b>27A·B</b></div>
+                <div><i>GATE</i><b>12</b></div>
+                <div><i>DEPARTURE</i><b>07:20</b></div>
+                <div><i>MILES</i><b>2,440</b></div>
+              </div>
+            </div>
+            <span class="plane">✈️</span>
+            <div class="bc"></div>
+          </div>
+          <div class="perf"></div>
+          <div class="stub">
+            <div class="hbar2">BOARDING PASS</div>
+            <div><div class="cd" style="color:var(--ok)">13일</div><div class="cdl">LEFT</div></div>
+            <div><div class="was">78,000</div><div class="now">62,400</div><span class="off">20%↓</span></div>
+          </div>
+        </div>
+        <div class="tkt t-flight">
+          <div class="body">
+            <div class="hbar">AIR TICKET</div>
+            <div class="in">
+              <div class="route">GMP <small>✈</small> RSU</div>
+              <div class="ttl">대한항공 KE1951 · 김포 → 여수</div>
+              <div class="fg">
+                <div><i>SEAT</i><b>35H</b></div>
+                <div><i>GATE</i><b>7</b></div>
+                <div><i>DEPARTURE</i><b>11:10</b></div>
+                <div><i>MILES</i><b>1,440</b></div>
+              </div>
+            </div>
+            <span class="plane">✈️</span>
+            <div class="bc"></div>
+          </div>
+          <div class="perf"></div>
+          <div class="stub">
+            <div class="hbar2">BOARDING PASS</div>
+            <div><div class="cd" style="color:var(--warn)">08:12</div><div class="cdl">LEFT</div></div>
+            <div><div class="was">92,000</div><div class="now">64,400</div><span class="off">30%↓</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="bnote">헤더·카테고리바·배너·지표는 <b>preview2와 완전히 동일</b>합니다. 티켓만 실물 어법으로 바뀌었습니다.</div>
+  </div>
+
+  <!-- ═══ 8종 갤러리 ═══ -->
+  <div class="block">
+    <div class="blabel"><span class="n">갤러리</span><h2>8개 카테고리 티켓</h2>
+      <span class="kw">골격은 같고 표면만 다릅니다</span></div>
+    <div class="stage">
+
+      <div class="slot">
+        <div class="cap"><b>🎬 영화</b><span>다크 차콜 + 레드 워드마크 · ADMIT ONE · 필름 스트립 · 뜯긴 스캘럽 가장자리 · 크림 스텁 세로 바코드</span>
+          <em>ref. Cinema Ticket</em></div>
+        <div class="pair">
+          <div class="tkt t-movie">
+            <div class="body">
+              <div class="frame"></div>
+              <div class="stars">★★★★★</div>
+              <div class="wm">CINEMA TICKET</div>
+              <div class="adm">ADMIT TWO</div>
+              <div class="ttl">아바타3 IMAX<br>용산 CGV</div>
+              <div class="seat">8관 E열 14·15번</div>
+              <div class="film"></div>
+            </div>
+            <div class="perf"></div>
+            <div class="stub">
+              <div class="bcv"></div>
+              <div><div class="cd" style="color:#c0392b">01:58</div><div class="cdl">LEFT</div></div>
+              <div><div class="was">32,000</div><div class="now">25,600</div><span class="off">20%↓</span></div>
+            </div>
+          </div>
+          <div class="tkt t-movie">
+            <div class="body">
+              <div class="frame"></div>
+              <div class="stars">★★★★★</div>
+              <div class="wm">CINEMA TICKET</div>
+              <div class="adm">ADMIT TWO</div>
+              <div class="ttl">듄 파트3<br>코엑스 메가박스</div>
+              <div class="seat">8관 J열 7·8번</div>
+              <div class="film"></div>
+            </div>
+            <div class="perf"></div>
+            <div class="stub">
+              <div class="bcv"></div>
+              <div><div class="cd" style="color:#b7791f">05:58</div><div class="cdl">LEFT</div></div>
+              <div><div class="was">28,000</div><div class="now">22,400</div><span class="off">20%↓</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="slot">
+        <div class="cap"><b>🎤 콘서트</b><span>풀블리드 비비드 · 관중 실루엣 · ENTRANCE/BLOCK/ROW/SEAT 알약 필드 · 세로 반복 스텁</span>
+          <em>ref. Concert Ticket</em></div>
+        <div class="pair">
+          <div class="tkt t-concert">
+            <div class="body">
+              <div class="kk">LIVE · OLYMPIC HALL</div>
+              <div class="ttl">아이유 콘서트</div>
+              <div class="sub">2026.08.08 · 19:00 · 올림픽홀</div>
+              <div class="fields">
+                <div><i>ENTRANCE</i><b>3</b></div>
+                <div><i>BLOCK</i><b>B</b></div>
+                <div><i>ROW</i><b>18</b></div>
+                <div><i>SEAT</i><b>28·29</b></div>
+              </div>
+              <div class="crowd"></div>
+            </div>
+            <div class="perf"></div>
+            <div class="stub">
+              <div class="vert">IU CONCERT · OLYMPIC HALL</div>
+              <div><div class="cd">01:58</div><div class="cdl">LEFT</div></div>
+              <div><div class="was">264,000</div><div class="now">211,200</div><span class="off">20%↓</span></div>
+            </div>
+          </div>
+          <div class="tkt t-concert" style="--c-concert:#6d4bd1">
+            <div class="body">
+              <div class="kk">LIVE · KSPO DOME</div>
+              <div class="ttl">데이식스 콘서트</div>
+              <div class="sub">2026.08.11 · 18:00 · KSPO돔</div>
+              <div class="fields">
+                <div><i>ENTRANCE</i><b>1</b></div>
+                <div><i>BLOCK</i><b>ST</b></div>
+                <div><i>ROW</i><b>10</b></div>
+                <div><i>SEAT</i><b>29·30</b></div>
+              </div>
+              <div class="crowd"></div>
+            </div>
+            <div class="perf"></div>
+            <div class="stub">
+              <div class="vert">DAY6 · KSPO DOME</div>
+              <div><div class="cd" style="color:#9fe8d8">2일</div><div class="cdl">LEFT</div></div>
+              <div><div class="was">198,000</div><div class="now">158,400</div><span class="off">20%↓</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="slot">
+        <div class="cap"><b>⚾ 스포츠</b><span>네이비·레드·화이트 · 별 띠 · ADMIT ONE 세로 스텁 · SEC/ROW/SEAT 박스 · 바코드</span>
+          <em>ref. Baseball Ticket</em></div>
+        <div class="pair">
+          <div class="tkt t-sports">
+            <div class="body">
+              <div class="starbar">★ ★ ★ ★ ★ ★ ★ ★ ★ ★ ★ ★</div>
+              <div class="in">
+                <div class="adm">ADMIT TWO</div>
+                <div class="ttl">LG vs 두산</div>
+                <div class="vs">잠실야구장 · 2026.08.09 18:30</div>
+                <div class="boxes">
+                  <div><i>SEC</i><b>227</b></div>
+                  <div><i>ROW</i><b>GRN</b></div>
+                  <div><i>SEAT</i><b>9·10</b></div>
+                  <div><i>QTY</i><b>2</b></div>
+                </div>
+              </div>
+              <div class="bc"></div>
+            </div>
+            <div class="perf"></div>
+            <div class="stub">
+              <div class="vert">ADMIT ONE</div>
+              <div><div class="cd">19:18</div><div class="cdl">LEFT</div></div>
+              <div><div class="was">60,000</div><div class="now">48,000</div><span class="off">20%↓</span></div>
+            </div>
+          </div>
+          <div class="tkt t-sports">
+            <div class="body">
+              <div class="starbar">★ ★ ★ ★ ★ ★ ★ ★ ★ ★ ★ ★</div>
+              <div class="in">
+                <div class="adm">ADMIT TWO</div>
+                <div class="ttl">손흥민 자선경기</div>
+                <div class="vs">서울월드컵경기장 · 2026.08.15 19:00</div>
+                <div class="boxes">
+                  <div><i>SEC</i><b>290</b></div>
+                  <div><i>ROW</i><b>1B</b></div>
+                  <div><i>SEAT</i><b>11·12</b></div>
+                  <div><i>QTY</i><b>2</b></div>
+                </div>
+              </div>
+              <div class="bc"></div>
+            </div>
+            <div class="perf"></div>
+            <div class="stub">
+              <div class="vert">ADMIT ONE</div>
+              <div><div class="cd">6일</div><div class="cdl">LEFT</div></div>
+              <div><div class="was">140,000</div><div class="now">112,000</div><span class="off">20%↓</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="slot">
+        <div class="cap"><b>🚄 기차</b><span>페일 민트 · 점선 테두리 · QR · 측면 반원 노치 · SPECIAL EXPRESS</span>
+          <em>ref. Train Ticket</em></div>
+        <div class="pair">
+          <div class="tkt t-train">
+            <div class="body">
+              <div class="dot"></div>
+              <div class="kk">KORAIL · SPECIAL EXPRESS</div>
+              <div class="top">
+                <div class="qr"></div>
+                <div>
+                  <div class="route">서울 → 부산</div>
+                  <div class="times">09:00 &nbsp;──▶&nbsp; 11:42</div>
+                </div>
+              </div>
+              <div class="meta">TRAIN <b>KTX 101</b> &nbsp;·&nbsp; CAR <b>6호차</b> &nbsp;·&nbsp; SEAT <b>21석</b><br>
+                NO. <b>1123-4567</b> &nbsp;·&nbsp; SINGLE</div>
+            </div>
+            <div class="perf"></div>
+            <div class="stub">
+              <div><div class="cd" style="color:var(--ok)">3일</div><div class="cdl">LEFT</div></div>
+              <div><div class="was">59,800</div><div class="now">47,800</div><span class="off">20%↓</span></div>
+            </div>
+          </div>
+          <div class="tkt t-train">
+            <div class="body">
+              <div class="dot"></div>
+              <div class="kk">SR · SPECIAL EXPRESS</div>
+              <div class="top">
+                <div class="qr"></div>
+                <div>
+                  <div class="route">수서 → 광주송정</div>
+                  <div class="times">14:30 &nbsp;──▶&nbsp; 16:12</div>
+                </div>
+              </div>
+              <div class="meta">TRAIN <b>SRT 651</b> &nbsp;·&nbsp; CAR <b>4호차</b> &nbsp;·&nbsp; SEAT <b>47석</b><br>
+                NO. <b>2214-8890</b> &nbsp;·&nbsp; SINGLE</div>
+            </div>
+            <div class="perf"></div>
+            <div class="stub">
+              <div><div class="cd" style="color:var(--ok)">12일</div><div class="cdl">LEFT</div></div>
+              <div><div class="was">47,500</div><div class="now">38,000</div><span class="off">20%↓</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="slot">
+        <div class="cap"><b>🖼️ 전시·팝업</b><span>얇은 이중 프레임 · 점선 리더가 있는 폼 행 · 우측 포스터 면 · 스캘럽 스텁</span>
+          <em>ref. Megabox Original Ticket</em></div>
+        <div class="pair">
+          <div class="tkt t-exhibition">
+            <div class="body">
+              <div class="form">
+                <div class="frame"></div>
+                <div class="kk">PLANB ORIGINAL TICKET</div>
+                <div class="ttl">요시고 사진전</div>
+                <div class="rows">
+                  <div><i>Venue</i><b>그라운드시소 성수</b></div>
+                  <div><i>Period</i><b>07.19 – 08.18</b></div>
+                  <div><i>Qty</i><b>2매 · 자유 관람</b></div>
+                  <div><i>Seller</i><b>user05</b></div>
+                </div>
+              </div>
+              <div class="poster"><span>🖼️</span></div>
+            </div>
+            <div class="perf"></div>
+            <div class="stub">
+              <div><div class="cd">10일</div><div class="cdl">LEFT</div></div>
+              <div><div class="was">36,000</div><div class="now">28,800</div><span class="off">20%↓</span></div>
+            </div>
+          </div>
+          <div class="tkt t-exhibition">
+            <div class="body">
+              <div class="form">
+                <div class="frame"></div>
+                <div class="kk">PLANB ORIGINAL TICKET</div>
+                <div class="ttl">무민 팝업스토어</div>
+                <div class="rows">
+                  <div><i>Venue</i><b>성수 팝업</b></div>
+                  <div><i>Period</i><b>07.27 – 08.26</b></div>
+                  <div><i>Qty</i><b>2매 · 자유 관람</b></div>
+                  <div><i>Seller</i><b>user04</b></div>
+                </div>
+              </div>
+              <div class="poster"><span>🧸</span></div>
+            </div>
+            <div class="perf"></div>
+            <div class="stub">
+              <div><div class="cd">18일</div><div class="cdl">LEFT</div></div>
+              <div><div class="was">40,000</div><div class="now">32,000</div><span class="off">20%↓</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="slot">
+        <div class="cap"><b>🏨 호텔</b><span>룸 키카드 · 금색 IC칩 · 체크인 ─ 체크아웃 타임라인 · 객실 번호</span>
+          <em>ref. 키카드 (레퍼런스 확장)</em></div>
+        <div class="pair">
+          <div class="tkt t-hotel">
+            <div class="body">
+              <div class="kk">ROOM KEY · 1 NIGHT</div>
+              <div class="ttl">속초 롯데리조트<br>디럭스 오션뷰</div>
+              <div class="stay">
+                <div><i>CHECK IN</i><b>08.28</b></div>
+                <div class="arw"></div>
+                <div><i>CHECK OUT</i><b>08.29</b></div>
+              </div>
+              <div class="chip"></div>
+              <div class="rm">ROOM 1204</div>
+            </div>
+            <div class="perf"></div>
+            <div class="stub">
+              <div><div class="cd" style="color:#9fe8d8">20일</div><div class="cdl">LEFT</div></div>
+              <div><div class="was">180,000</div><div class="now">144,000</div><span class="off">20%↓</span></div>
+            </div>
+          </div>
+          <div class="tkt t-hotel" style="--c-hotel:#3f6bb8">
+            <div class="body">
+              <div class="kk">ROOM KEY · 1 NIGHT</div>
+              <div class="ttl">여수 베네치아호텔<br>스탠다드 트윈</div>
+              <div class="stay">
+                <div><i>CHECK IN</i><b>08.20</b></div>
+                <div class="arw"></div>
+                <div><i>CHECK OUT</i><b>08.21</b></div>
+              </div>
+              <div class="chip"></div>
+              <div class="rm">ROOM 807</div>
+            </div>
+            <div class="perf"></div>
+            <div class="stub">
+              <div><div class="cd" style="color:#9fe8d8">12일</div><div class="cdl">LEFT</div></div>
+              <div><div class="was">150,000</div><div class="now">112,500</div><span class="off">25%↓</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="slot" style="margin-bottom:0">
+        <div class="cap"><b>🎁 기프티콘</b><span>교환권 쿠폰 · 점선 테두리 · 상품 원형 · 연장 뱃지 · 세로 바코드 스텁</span>
+          <em>ref. 교환권 (레퍼런스 확장)</em></div>
+        <div class="pair">
+          <div class="tkt t-gifticon">
+            <div class="body">
+              <div class="dash"></div>
+              <div class="prod">☕</div>
+              <div class="tx">
+                <div class="kk">GIFT VOUCHER · 교환권</div>
+                <div class="ttl">스타벅스 아메리카노 T 2매</div>
+                <div class="exp">유효기한 2026.08.23 · 전국 매장</div>
+                <span class="badge">기한 연장 가능</span>
+              </div>
+            </div>
+            <div class="perf"></div>
+            <div class="stub">
+              <div class="bcv"></div>
+              <div><div class="cd">15일</div><div class="cdl">LEFT</div></div>
+              <div><div class="was">10,000</div><div class="now">7,000</div><span class="off">30%↓</span></div>
+            </div>
+          </div>
+          <div class="tkt t-gifticon">
+            <div class="body">
+              <div class="dash"></div>
+              <div class="prod">🍦</div>
+              <div class="tx">
+                <div class="kk">GIFT VOUCHER · 교환권</div>
+                <div class="ttl">배스킨라빈스 파인트 교환권</div>
+                <div class="exp"><s>2026.08.18</s> → <b>2026.09.17</b></div>
+                <span class="badge">30일 연장됨</span>
+              </div>
+            </div>
+            <div class="perf"></div>
+            <div class="stub">
+              <div class="bcv"></div>
+              <div><div class="cd" style="color:var(--ok)">40일</div><div class="cdl">LEFT</div></div>
+              <div><div class="was">12,000</div><div class="now">9,600</div><span class="off">20%↓</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <div class="bnote"><b>8종이 공유하는 것</b> — 높이 200px · 라운드 14px · 스텁 폭 132px · 절취선과 노치 위치 ·
+      카운트다운 21px 고정폭 · 가격 17px 고정폭 · 할인 뱃지 형태 · 그림자.
+      <b>달라지는 것</b> — 본권의 색·질감·필드 구성·가장자리 처리뿐입니다.</div>
+  </div>
+
+  <div class="lead" style="margin-top:26px">
+    <p><b>알려주실 것</b> — ① 8종 중 손볼 것 ② 홈(전체 목록)은 지금의 컴팩트 카드를 유지할지, 아니면 여기 티켓을 축소해 넣을지
+       ③ 카테고리 페이지를 2열 와이드로 갈지 3열로 갈지. 정해지면 본 화면에 옮기겠습니다.</p>
+  </div>
+
+</div>
+</body>
+</html>

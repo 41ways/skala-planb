@@ -141,9 +141,12 @@ button{cursor:pointer; border:0; background:none}
   background:rgba(255,255,255,.14); padding:3px 9px; border-radius:999px;
 }
 .ticker .lane{flex:1; overflow:hidden; -webkit-mask-image:linear-gradient(90deg,transparent,#000 3%,#000 92%,transparent)}
-.ticker .train{display:inline-flex; gap:34px; white-space:nowrap; animation:slide 42s linear infinite; padding-left:100%}
+/* 같은 목록을 두 벌 붙여두고 정확히 절반만 밀면 이음매 없이 돈다.
+   화면 밖에서 시작하면(padding-left:100%) 캡처 순간 티커가 빈 띠로 찍힌다 */
+.ticker .train{display:inline-flex; gap:34px; white-space:nowrap; animation:slide 46s linear infinite}
+.ticker .train > .it{padding-right:0}
 .ticker:hover .train{animation-play-state:paused}
-@keyframes slide{from{transform:translateX(0)}to{transform:translateX(-100%)}}
+@keyframes slide{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 .ticker .it{font-size:12px; opacity:.92}
 .ticker .it b{color:#ffd6dd; font-weight:800}
 .ticker .it .c{color:#7ee7d8; font-weight:800}
@@ -397,6 +400,248 @@ main.wrap{padding:38px 20px 74px; min-height:60vh}
 @keyframes sk{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
 
 /* ══════════════════════════════════════════════════════════
+   5-b. 카테고리 페이지 — 배너 · 지표 · 실물 티켓
+   ══════════════════════════════════════════════════════════
+   골격은 8종이 완전히 같다 — [본권] + [절취선] + [스텁].
+   높이 200px, 라운드 14px, 스텁 폭 132px, 스텁 안 타이포까지 동일.
+   달라지는 건 본권의 표면 어법뿐이다. 실제 영화표와 항공권이 다르게 생긴 만큼만.
+   이미지·아이콘 외부 파일 0개 — 바코드·QR·스캘럽·관중은 전부 CSS로 그렸다.        */
+:root{--tkt-h:200px; --stub-w:132px; --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace}
+
+.ban{position:relative; overflow:hidden; border-radius:16px; padding:20px 22px; color:#fff; margin-bottom:12px;
+  background:linear-gradient(120deg, var(--acc), color-mix(in srgb, var(--acc) 55%, #1b2233))}
+.ban .emo{position:absolute; right:16px; bottom:-22px; font-size:96px; opacity:.16; line-height:1}
+.ban .kk{font-size:10.5px; font-weight:800; letter-spacing:1.4px; opacity:.85}
+.ban h2{margin:7px 0 0; font-size:23px; font-weight:800; letter-spacing:-.9px; color:#fff}
+.ban p{margin:6px 0 0; font-size:13px; opacity:.9; max-width:660px; line-height:1.6}
+
+.cstats{display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--line);
+  border:1px solid var(--line); border-radius:16px; overflow:hidden; margin-bottom:16px}
+.cstats > div{background:var(--surface); padding:12px 15px}
+.cstats .k{font-size:11px; color:var(--dim2); font-weight:600}
+.cstats .v{font-size:19px; font-weight:800; letter-spacing:-.7px; margin-top:2px; font-variant-numeric:tabular-nums}
+.cstats .v.acc{color:var(--acc)}
+.cstats .n{font-size:11px; color:var(--dim2); margin-top:1px}
+@media(max-width:860px){.cstats{grid-template-columns:repeat(2,1fr)}}
+
+.wide{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+@media(max-width:1000px){.wide{grid-template-columns:1fr}}
+
+/* ── 공통 골격 ── */
+.tkt{position:relative; display:flex; height:var(--tkt-h); border-radius:14px; overflow:hidden;
+  box-shadow:var(--sh1,0 1px 2px rgba(20,30,60,.06)); background:var(--surface); cursor:pointer; text-align:left;
+  border:0; padding:0; font-family:inherit; color:inherit; transition:transform .16s ease, box-shadow .16s ease}
+.tkt:hover{transform:translateY(-2px); box-shadow:var(--sh2,0 12px 30px rgba(20,30,60,.12))}
+.tkt.dead{opacity:.5}
+.tkt .body{flex:1; min-width:0; position:relative; overflow:hidden}
+.tkt .stub{width:var(--stub-w); flex-shrink:0; position:relative; overflow:hidden; padding:14px 13px;
+  display:flex; flex-direction:column; justify-content:space-between; text-align:right}
+.tkt .perf{position:absolute; top:0; bottom:0; right:var(--stub-w); width:0; z-index:3;
+  border-left:1.5px dashed var(--pf,rgba(0,0,0,.18))}
+.tkt .perf::before,.tkt .perf::after{content:''; position:absolute; left:-8px; width:16px; height:16px;
+  border-radius:50%; background:var(--bg)}
+.tkt .perf::before{top:-8px} .tkt .perf::after{bottom:-8px}
+/* 스텁 정보는 8종 전부 동일한 타이포 */
+.tkt .cd{font-size:21px; font-weight:800; letter-spacing:-.8px; font-family:var(--mono); line-height:1.1}
+.tkt .cdl{font-size:9px; letter-spacing:1.1px; opacity:.62; margin-top:3px}
+.tkt .was{font-size:10.5px; opacity:.55; text-decoration:line-through; font-family:var(--mono)}
+.tkt .now{font-size:17px; font-weight:800; letter-spacing:-.6px; font-family:var(--mono)}
+.tkt .offb{display:inline-block; font-size:9.5px; font-weight:800; padding:1px 6px; border-radius:4px; margin-top:4px}
+.tkt .rsv{position:absolute; left:0; right:0; top:0; bottom:0; z-index:4; display:grid; place-items:center;
+  background:rgba(12,16,26,.52); color:#fff; font-size:13px; font-weight:800; letter-spacing:.5px}
+
+/* 재료 */
+.bc{background-image:repeating-linear-gradient(90deg, var(--bcc,#15181f) 0 1px, transparent 1px 3px,
+  var(--bcc,#15181f) 3px 5px, transparent 5px 6px, var(--bcc,#15181f) 6px 7px, transparent 7px 10px)}
+.bcv{background-image:repeating-linear-gradient(180deg, var(--bcc,#15181f) 0 1px, transparent 1px 3px,
+  var(--bcc,#15181f) 3px 5px, transparent 5px 6px, var(--bcc,#15181f) 6px 7px, transparent 7px 10px)}
+.qr{width:40px; height:40px; flex-shrink:0; background-repeat:no-repeat;
+  background-image:linear-gradient(var(--qc,#2c3a2e) 0 0),linear-gradient(var(--qc,#2c3a2e) 0 0),
+    linear-gradient(var(--qc,#2c3a2e) 0 0),linear-gradient(var(--qc,#2c3a2e) 0 0),
+    linear-gradient(var(--qc,#2c3a2e) 0 0),linear-gradient(var(--qc,#2c3a2e) 0 0),
+    linear-gradient(var(--qc,#2c3a2e) 0 0),linear-gradient(var(--qc,#2c3a2e) 0 0);
+  background-size:12px 12px,12px 12px,12px 12px,5px 5px,5px 5px,8px 4px,4px 8px,6px 6px;
+  background-position:0 0,28px 0,0 28px,4px 4px,32px 4px,16px 16px,26px 20px,30px 30px}
+
+/* 빈 칸 채우는 등록 유도 카드 — 티켓과 같은 높이·라운드를 쓴다 */
+.ghost{
+  height:var(--tkt-h); border-radius:14px; cursor:pointer; text-align:center; font-family:inherit;
+  border:1.5px dashed color-mix(in srgb, var(--acc) 42%, transparent);
+  background:color-mix(in srgb, var(--acc) 5%, var(--surface));
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; padding:20px;
+  transition:border-color .16s ease, background .16s ease;
+}
+.ghost:hover{border-color:var(--acc); background:color-mix(in srgb, var(--acc) 10%, var(--surface))}
+.ghost .g-emo{font-size:30px; opacity:.5}
+.ghost b{font-size:14.5px; font-weight:800; letter-spacing:-.4px; color:var(--txt)}
+.ghost span{font-size:12px; color:var(--dim2); max-width:280px; line-height:1.55}
+.ghost .g-cta{margin-top:6px; font-size:12.5px; font-weight:800; color:var(--acc)}
+
+/* ── 영화 — 다크 차콜 + 레드, ADMIT, 필름, 스캘럽 ── */
+.t-MOVIE{--pf:rgba(255,255,255,.28)}
+.t-MOVIE .body{background:#2a2e3a; color:#f2f0eb; padding:15px 16px;
+  -webkit-mask:radial-gradient(circle 5px at 0 6px, transparent 5px, #000 5.5px) 0 0/100% 12px repeat-y;
+          mask:radial-gradient(circle 5px at 0 6px, transparent 5px, #000 5.5px) 0 0/100% 12px repeat-y}
+.t-MOVIE .frame{position:absolute; inset:8px; border:1px solid rgba(255,255,255,.16); border-radius:9px}
+.t-MOVIE .stars{font-size:9px; letter-spacing:3px; color:#e2513f}
+.t-MOVIE .wm{font-size:15px; font-weight:900; color:#e2513f; margin-top:6px; line-height:1}
+.t-MOVIE .adm{font-size:8.5px; letter-spacing:2.4px; color:rgba(255,255,255,.5); margin-top:4px}
+.t-MOVIE .ttl{font-size:16px; font-weight:800; letter-spacing:-.5px; margin-top:11px; line-height:1.35;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden}
+.t-MOVIE .seat{font-size:10.5px; font-family:var(--mono); color:rgba(255,255,255,.62); margin-top:8px}
+.t-MOVIE .film{position:absolute; left:16px; bottom:14px; width:34px; height:22px; border-radius:3px; background:#15181f;
+  background-image:repeating-linear-gradient(90deg,#f2f0eb 0 3px,transparent 3px 7px),
+                   repeating-linear-gradient(90deg,#f2f0eb 0 3px,transparent 3px 7px);
+  background-size:100% 3px,100% 3px; background-position:0 2px,0 17px; background-repeat:repeat-x}
+.t-MOVIE .film::after{content:'▶'; position:absolute; inset:0; display:grid; place-items:center; font-size:9px; color:#f2f0eb}
+.t-MOVIE .stub{background:#efece2; color:#22252d}
+.t-MOVIE .stub .bcv{position:absolute; left:11px; top:14px; bottom:14px; width:26px; --bcc:#22252d}
+.t-MOVIE .offb{background:#e2513f; color:#fff}
+
+/* ── 콘서트 — 풀블리드 + 관중 실루엣 + 좌석 필드 ── */
+.t-CONCERT{--pf:rgba(255,255,255,.34)}
+.t-CONCERT .body{color:#fff; padding:15px 16px;
+  background:linear-gradient(115deg, color-mix(in srgb,var(--acc) 92%, #2a1030), #2a1a40)}
+.t-CONCERT .crowd{position:absolute; left:0; right:0; bottom:0; height:46px; opacity:.55;
+  background-image:radial-gradient(circle 8px at 13px 30px,#12081c 98%,transparent 100%),
+                   radial-gradient(circle 6px at 9px 36px,#12081c 98%,transparent 100%);
+  background-size:27px 46px,19px 46px; background-repeat:repeat-x}
+.t-CONCERT .kk{font-size:9px; font-weight:800; letter-spacing:2px; color:#ffd9e6}
+.t-CONCERT .ttl{font-size:19px; font-weight:900; letter-spacing:-.7px; margin-top:8px; line-height:1.2;
+  position:relative; z-index:1; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden}
+.t-CONCERT .sub{font-size:10.5px; opacity:.82; margin-top:5px; font-family:var(--mono); position:relative; z-index:1}
+.t-CONCERT .fields{position:absolute; left:16px; right:16px; bottom:13px; display:flex; gap:6px; z-index:2}
+.t-CONCERT .fields div{flex:1; background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.24);
+  border-radius:999px; padding:4px 8px; text-align:center; min-width:0}
+.t-CONCERT .fields i{display:block; font-style:normal; font-size:7.5px; letter-spacing:1px; opacity:.8}
+.t-CONCERT .fields b{font-size:11px; font-weight:800; font-family:var(--mono); white-space:nowrap;
+  overflow:hidden; text-overflow:ellipsis; display:block}
+.t-CONCERT .stub{background:#241436; color:#fff}
+.t-CONCERT .stub .vert{position:absolute; left:12px; top:14px; bottom:14px; writing-mode:vertical-rl;
+  font-size:8.5px; letter-spacing:2.4px; color:rgba(255,255,255,.42); font-weight:700; overflow:hidden}
+.t-CONCERT .cd{color:#ff7d9c} .t-CONCERT .offb{background:#ff7d9c; color:#241436}
+
+/* ── 스포츠 — 네이비·레드·화이트, 별 띠, SEC/ROW/SEAT ── */
+.t-SPORTS{--pf:rgba(0,0,0,.2)}
+.t-SPORTS .body{background:#fff; padding:0; color:#1b2a5c}
+.t-SPORTS .starbar{height:16px; background:#1b2a5c; color:#fff; font-size:8px; letter-spacing:4px;
+  display:flex; align-items:center; padding:0 14px; overflow:hidden}
+.t-SPORTS .in{padding:11px 15px}
+.t-SPORTS .adm{font-size:9px; font-weight:900; letter-spacing:2.2px; color:#c62b3d}
+.t-SPORTS .ttl{font-size:18px; font-weight:900; letter-spacing:-.7px; margin-top:6px; color:#1b2a5c; line-height:1.25;
+  display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden}
+.t-SPORTS .vs{font-size:10.5px; color:#7c88a8; margin-top:5px; font-family:var(--mono)}
+.t-SPORTS .boxes{display:flex; gap:6px; margin-top:11px}
+.t-SPORTS .boxes div{flex:1; border:1.5px solid #1b2a5c; border-radius:5px; padding:3px 6px; text-align:center; min-width:0}
+.t-SPORTS .boxes i{display:block; font-style:normal; font-size:7.5px; letter-spacing:1.2px; color:#7c88a8}
+.t-SPORTS .boxes b{font-size:12px; font-weight:900; color:#1b2a5c; font-family:var(--mono); display:block;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.t-SPORTS .bc{position:absolute; left:15px; right:15px; bottom:11px; height:16px; --bcc:#1b2a5c}
+.t-SPORTS .stub{background:#1b2a5c; color:#fff}
+.t-SPORTS .stub .vert{position:absolute; left:11px; top:14px; bottom:14px; writing-mode:vertical-rl;
+  font-size:9px; font-weight:900; letter-spacing:3px; color:#c62b3d}
+.t-SPORTS .cd{color:#fff} .t-SPORTS .offb{background:#c62b3d; color:#fff}
+
+/* ── 항공 — 보딩패스 ── */
+.t-FLIGHT{--pf:rgba(0,0,0,.18)}
+.t-FLIGHT .body{background:#fff; padding:0; color:#1b2430}
+.t-FLIGHT .hbar{height:24px; background:var(--acc); color:#fff; display:flex; align-items:center;
+  padding:0 15px; font-size:10px; font-weight:900; letter-spacing:2.4px}
+.t-FLIGHT .in{padding:12px 15px}
+.t-FLIGHT .route{font-size:26px; font-weight:900; letter-spacing:-1.4px; color:var(--acc); line-height:1;
+  display:flex; align-items:center; gap:9px; white-space:nowrap; overflow:hidden}
+.t-FLIGHT .route small{font-size:15px; opacity:.7}
+.t-FLIGHT .ttl{font-size:11.5px; color:var(--dim); margin-top:5px; font-weight:600;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.t-FLIGHT .fg{display:flex; gap:18px; margin-top:12px}
+.t-FLIGHT .fg div i{display:block; font-style:normal; font-size:8px; letter-spacing:1.2px; color:var(--dim2); font-weight:700}
+.t-FLIGHT .fg div b{font-size:15px; font-weight:900; color:#1b2430; font-family:var(--mono); letter-spacing:-.4px}
+.t-FLIGHT .bc{position:absolute; left:15px; right:15px; bottom:11px; height:18px; --bcc:#1b2430}
+.t-FLIGHT .plane{position:absolute; right:14px; top:34px; font-size:34px; opacity:.1; transform:rotate(-18deg)}
+.t-FLIGHT .stub{background:#f2f7f9; color:#12303a; padding-top:34px}
+.t-FLIGHT .stub .hbar2{position:absolute; left:0; right:0; top:0; height:24px; background:var(--acc);
+  color:#fff; font-size:8px; font-weight:900; letter-spacing:1.6px; display:grid; place-items:center}
+.t-FLIGHT .offb{background:var(--acc); color:#fff}
+
+/* ── 기차 — 페일 민트 + 점선 + QR + 측면 노치 ── */
+.t-TRAIN{--pf:rgba(44,58,46,.3)}
+.t-TRAIN .body{background:#eef4ea; color:#2c3a2e; padding:14px 16px}
+.t-TRAIN .dot{position:absolute; inset:7px; border:1.5px dotted rgba(44,58,46,.35); border-radius:8px}
+.t-TRAIN .kk{font-size:9px; font-weight:900; letter-spacing:2.4px; color:#5a7a5e}
+.t-TRAIN .top{display:flex; gap:12px; align-items:flex-start; margin-top:8px}
+.t-TRAIN .route{font-size:17px; font-weight:900; letter-spacing:-.6px; line-height:1.25}
+.t-TRAIN .times{font-size:10.5px; font-family:var(--mono); color:#5a7a5e; margin-top:5px}
+.t-TRAIN .meta{font-size:10px; font-family:var(--mono); color:#5a7a5e; margin-top:9px; line-height:1.8}
+.t-TRAIN .meta b{color:#2c3a2e}
+.t-TRAIN .body::before{content:''; position:absolute; left:-9px; top:calc(50% - 9px); width:18px; height:18px;
+  border-radius:50%; background:var(--bg)}
+.t-TRAIN .stub{background:#e3ebde; color:#2c3a2e}
+.t-TRAIN .cd{color:#2c3a2e} .t-TRAIN .offb{background:#2c3a2e; color:#eef4ea}
+
+/* ── 전시 — 이중 프레임 + 폼 행 + 포스터 면 + 스캘럽 스텁 ── */
+.t-EXHIBITION{--pf:rgba(180,90,80,.32)}
+.t-EXHIBITION .body{background:#fdf3f1; color:#8a3b34; padding:0; display:flex}
+.t-EXHIBITION .form{flex:1; padding:13px 14px; position:relative; min-width:0}
+.t-EXHIBITION .frame{position:absolute; inset:6px; border:1px solid rgba(180,90,80,.4); border-radius:7px}
+.t-EXHIBITION .frame::after{content:''; position:absolute; inset:3px; border:1px solid rgba(180,90,80,.2); border-radius:5px}
+.t-EXHIBITION .kk{font-size:8px; font-weight:800; letter-spacing:1.8px; opacity:.75}
+.t-EXHIBITION .ttl{font-size:15.5px; font-weight:800; letter-spacing:-.4px; margin-top:8px; line-height:1.3; color:#7a2f29;
+  display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden}
+.t-EXHIBITION .rows{margin-top:10px}
+.t-EXHIBITION .rows div{display:flex; align-items:baseline; gap:6px; font-size:10px; padding:3px 0;
+  border-bottom:1px dotted rgba(180,90,80,.32); font-family:var(--mono)}
+.t-EXHIBITION .rows i{font-style:normal; width:46px; flex-shrink:0; opacity:.65}
+.t-EXHIBITION .rows b{font-weight:700; color:#7a2f29; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.t-EXHIBITION .poster{width:86px; flex-shrink:0; margin:7px 7px 7px 0; border-radius:6px; position:relative;
+  overflow:hidden; display:grid; place-items:center; font-size:30px;
+  background:linear-gradient(160deg,#e8b4ac,#c97f76 55%,#8a3b34)}
+.t-EXHIBITION .stub{background:#f7e6e3; color:#8a3b34;
+  -webkit-mask:radial-gradient(circle 5px at 100% 6px, transparent 5px, #000 5.5px) 0 0/100% 12px repeat-y;
+          mask:radial-gradient(circle 5px at 100% 6px, transparent 5px, #000 5.5px) 0 0/100% 12px repeat-y}
+.t-EXHIBITION .cd{color:#a8443c} .t-EXHIBITION .offb{background:#a8443c; color:#fdf3f1}
+
+/* ── 호텔 — 룸 키카드 ── */
+.t-HOTEL{--pf:rgba(255,255,255,.3)}
+.t-HOTEL .body{color:#fff; padding:15px 16px;
+  background:linear-gradient(125deg, color-mix(in srgb,var(--acc) 88%, #241344), #1b1230)}
+.t-HOTEL .body::after{content:''; position:absolute; right:-24px; top:-24px; width:130px; height:130px; border-radius:50%;
+  background:radial-gradient(circle at 40% 60%, rgba(255,255,255,.22), transparent 68%)}
+.t-HOTEL .kk{font-size:9px; font-weight:900; letter-spacing:2.4px; opacity:.75}
+.t-HOTEL .ttl{font-size:17px; font-weight:800; letter-spacing:-.6px; margin-top:8px; line-height:1.3; position:relative;
+  z-index:1; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden}
+.t-HOTEL .stay{display:flex; align-items:center; gap:11px; margin-top:13px; position:relative; z-index:1}
+.t-HOTEL .stay div i{display:block; font-style:normal; font-size:8px; letter-spacing:1.2px; opacity:.65; font-weight:700}
+.t-HOTEL .stay div b{font-size:14px; font-weight:800; font-family:var(--mono); letter-spacing:-.3px}
+.t-HOTEL .stay .arw{flex:1; height:1px; background:rgba(255,255,255,.3); position:relative}
+.t-HOTEL .stay .arw::after{content:attr(data-n); position:absolute; left:50%; top:-8px; transform:translateX(-50%);
+  font-size:8.5px; background:rgba(255,255,255,.16); padding:1px 7px; border-radius:999px; white-space:nowrap}
+.t-HOTEL .chip{position:absolute; left:16px; bottom:14px; width:30px; height:22px; border-radius:4px; z-index:1;
+  background-image:linear-gradient(135deg,#e8d38a,#c9a44e),
+    repeating-linear-gradient(90deg, rgba(0,0,0,.22) 0 1px, transparent 1px 6px)}
+.t-HOTEL .rm{position:absolute; right:16px; bottom:14px; font-size:10px; font-family:var(--mono); opacity:.7; z-index:1}
+.t-HOTEL .stub{background:#1b1230; color:#fff}
+.t-HOTEL .cd{color:#c5aef5} .t-HOTEL .offb{background:#c5aef5; color:#1b1230}
+
+/* ── 기프티콘 — 교환권 쿠폰 ── */
+.t-GIFTICON{--pf:rgba(140,70,50,.3)}
+.t-GIFTICON .body{background:#fdf6ee; color:#6b3a24; padding:14px 16px; display:flex; gap:13px; align-items:center}
+.t-GIFTICON .dash{position:absolute; inset:7px; border:1.5px dashed rgba(160,90,60,.36); border-radius:8px}
+.t-GIFTICON .prod{width:62px; height:62px; border-radius:50%; flex-shrink:0; display:grid; place-items:center; font-size:30px;
+  background:linear-gradient(140deg,#fff,color-mix(in srgb,var(--acc) 16%, #fff));
+  border:1.5px solid color-mix(in srgb,var(--acc) 30%, #fff)}
+.t-GIFTICON .tx{min-width:0; position:relative; z-index:1}
+.t-GIFTICON .kk{font-size:8.5px; font-weight:900; letter-spacing:2px; color:var(--acc)}
+.t-GIFTICON .ttl{font-size:15.5px; font-weight:800; letter-spacing:-.4px; margin-top:6px; line-height:1.3;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden}
+.t-GIFTICON .exp{font-size:10.5px; font-family:var(--mono); color:#9b6b4f; margin-top:7px}
+.t-GIFTICON .exp s{opacity:.55}
+.t-GIFTICON .badge{display:inline-block; font-size:9px; font-weight:800; padding:2px 8px; border-radius:999px;
+  background:color-mix(in srgb,var(--ok) 14%, #fff); color:var(--ok); margin-top:7px}
+.t-GIFTICON .stub{background:#f6ebdf; color:#6b3a24}
+.t-GIFTICON .stub .bcv{position:absolute; left:11px; top:14px; bottom:14px; width:24px; --bcc:#6b3a24}
+.t-GIFTICON .cd{color:#6b3a24} .t-GIFTICON .offb{background:var(--acc); color:#fff}
+
+/* ══════════════════════════════════════════════════════════
    6. 모달 · 드로어 · 토스트
    ══════════════════════════════════════════════════════════ */
 .scrim{
@@ -556,7 +801,8 @@ main.wrap{padding:38px 20px 74px; min-height:60vh}
 .bar2{display:flex; align-items:center; gap:10px; margin-bottom:9px; font-size:12.5px}
 .bar2 .nm{width:78px; color:var(--dim); flex-shrink:0; font-weight:600}
 .bar2 .track{flex:1; height:18px; background:var(--surface3); border-radius:6px; overflow:hidden}
-.bar2 .fill{height:100%; background:linear-gradient(90deg,var(--brand),var(--hot)); border-radius:6px}
+/* span은 인라인이라 width가 안 먹는다. 이걸 빼먹으면 막대가 통째로 사라진다 */
+.bar2 .fill{display:block; height:100%; background:linear-gradient(90deg,var(--brand),var(--hot)); border-radius:6px}
 .bar2 .pc{width:104px; text-align:right; color:var(--dim2); font-variant-numeric:tabular-nums; font-size:12px}
 .note{margin-top:12px; font-size:11.5px; color:var(--dim2); border-top:1px solid var(--line); padding-top:10px; line-height:1.6}
 
@@ -685,18 +931,42 @@ function fail(r, fallback) {
 /* ═══════════════════════════════════════════════════════════
    1. 도메인 상수
    ═══════════════════════════════════════════════════════════ */
+/**
+ * 카테고리 8종.
+ *
+ * 액센트 색은 명도·채도 대역을 맞춰 한 벌로 뽑았다. 카테고리마다 제 색을 갖되
+ * 나란히 놓았을 때 한 가족으로 보여야 하고, 긴급·주의·정상 상태색과는 절대 안 섞인다.
+ *
+ * exp(만료 방식)가 카드 표현을 가른다 — 취향이 아니라 도메인에서 나온 분기다.
+ */
 const CATS = [
-  ['',           '전체',     '🎫', '#4f46e5', '#7c3aed'],
-  ['MOVIE',      '영화',     '🎬', '#6366f1', '#8b5cf6'],
-  ['CONCERT',    '콘서트',   '🎤', '#ec4899', '#f43f5e'],
-  ['SPORTS',     '스포츠',   '⚾', '#059669', '#10b981'],
-  ['EXHIBITION', '전시·팝업','🖼️', '#f59e0b', '#f97316'],
-  ['TRAIN',      '기차',     '🚄', '#0ea5e9', '#2563eb'],
-  ['FLIGHT',     '항공',     '✈️', '#06b6d4', '#0891b2'],
-  ['HOTEL',      '호텔',     '🏨', '#8b5cf6', '#6d28d9'],
-  ['GIFTICON',   '기프티콘', '🎁', '#f43f5e', '#fb923c'],
+  { k:'',           label:'전체',      emo:'🎫',  acc:'#5b6ee1', g2:'#7d5fd0' },
+  { k:'MOVIE',      label:'영화',      emo:'🎬',  acc:'#5b6ee1', g2:'#7c6ad8', exp:'POINT',
+    head:'상영이 시작되면 그대로 사라집니다',
+    desc:'상영관과 좌석이 그대로 넘어갑니다. 시작 시각이 못 박혀 있어 초 단위로 값이 줄어듭니다.' },
+  { k:'CONCERT',    label:'콘서트',    emo:'🎤',  acc:'#d1517f', g2:'#b8477e', exp:'POINT',
+    head:'공연 시작 전까지만 넘길 수 있습니다',
+    desc:'구역·열·번호가 그대로 이전됩니다. 좌석이 좋을수록, 임박할수록 값의 낙차가 큽니다.' },
+  { k:'SPORTS',     label:'스포츠',    emo:'⚾',  acc:'#2f9e73', g2:'#2b8f7e', exp:'POINT',
+    head:'경기 시작과 함께 값이 0이 됩니다',
+    desc:'블록과 좌석이 그대로 넘어갑니다. 우천 취소가 아닌 한 되돌릴 방법이 없습니다.' },
+  { k:'EXHIBITION', label:'전시·팝업', emo:'🖼️', acc:'#cf8a2e', g2:'#c2743a', exp:'RANGE',
+    head:'기간 안에 아무 날이나 가면 됩니다',
+    desc:'종료일까지 언제든 입장할 수 있습니다. 급하지는 않지만 남은 기간이 짧아질수록 값이 내려갑니다.' },
+  { k:'TRAIN',      label:'기차',      emo:'🚄',  acc:'#3b83c9', g2:'#3f6bb8', exp:'POINT',
+    head:'열차가 떠나면 끝입니다',
+    desc:'호차와 좌석 번호가 그대로 이전됩니다. 출발 시각 기준으로 자동 실효 처리됩니다.' },
+  { k:'FLIGHT',     label:'항공',      emo:'✈️', acc:'#2a9db0', g2:'#2b8aa8', exp:'POINT',
+    head:'탑승 시각이 지나면 그대로 사라집니다',
+    desc:'좌석과 편명이 그대로 넘어가고, 적립 마일도 함께 이전됩니다.' },
+  { k:'HOTEL',      label:'호텔',      emo:'🏨',  acc:'#7d5fd0', g2:'#6a4fc0', exp:'RANGE',
+    head:'투숙 기간 안에 쓰면 됩니다',
+    desc:'예약이 그대로 이전됩니다. 사용 기한이 지나면 환불 없이 소멸합니다.' },
+  { k:'GIFTICON',   label:'기프티콘',  emo:'🎁',  acc:'#d2634a', g2:'#c9553f', exp:'EXT',
+    head:'기한이 다가와도 미룰 수 있습니다',
+    desc:'유일하게 소멸이 절대적이지 않습니다. 기한을 연장하면 값이 살아나기 때문에 연장 버튼이 먼저 옵니다.' },
 ];
-const CAT = Object.fromEntries(CATS.map(c => [c[0], { label: c[1], emo: c[2], g1: c[3], g2: c[4] }]));
+const CAT = Object.fromEntries(CATS.map(c => [c.k, Object.assign({ g1: c.acc }, c)]));
 const catOf = k => CAT[k] || CAT[''];
 
 const LISTING_LABEL = { OPEN:'판매중', RESERVED:'예약중', IN_ESCROW:'결제완료', COMPLETED:'거래완료', WITHDRAWN:'철회', EXPIRED:'만료' };
@@ -733,6 +1003,7 @@ const S = {
   notifs: [],
   loading: true,
   myData: {},           // 마이페이지 탭별 데이터
+  catStats: null,       // 카테고리별 집계 — 카테고리 페이지 지표에 씀
 };
 
 /* 서버 시각 기준으로 보정한 잔여 밀리초 */
@@ -800,13 +1071,18 @@ function renderNav() {
 }
 
 function renderCats() {
-  $('cats').innerHTML = CATS.map(([v, l, e]) =>
-    `<button class="cat ${v === S.cat ? 'on' : ''}" onclick="pickCat('${v}')">
-       <span class="e">${e}</span>${l}</button>`).join('');
+  $('cats').innerHTML = CATS.map(c =>
+    `<button class="cat ${c.k === S.cat ? 'on' : ''}" onclick="pickCat('${c.k}')"
+       ${c.k === S.cat && c.k ? `style="background:${c.acc};border-color:${c.acc};color:#fff"` : ''}>
+       <span class="e">${c.emo}</span>${c.label}</button>`).join('');
   $('catbar').style.display = S.view === 'market' ? '' : 'none';
 }
 
-function pickCat(v) { S.cat = v; renderCats(); loadListings(); }
+function pickCat(v) {
+  S.cat = v; S.loading = true; S.listings = [];
+  renderCats(); renderView(); loadListings();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
 function go(v) { S.view = v; S.q = ''; $('q').value = ''; renderNav(); renderCats(); renderView(); window.scrollTo({top:0}); }
 
 $('q').oninput = e => {
@@ -824,7 +1100,7 @@ async function loadSummary() {
   if (!r.ok || !r.body) return;
   S.summary = r.body;
   S.skewMs = new Date(r.body.checkedAt).getTime() - Date.now();
-  if (S.view === 'market') paintKpis();
+  paintKpis();   // 마켓·리포트 양쪽에 같은 카드가 있다. 있으면 칠한다
 }
 
 async function loadListings() {
@@ -832,7 +1108,8 @@ async function loadListings() {
   const r = await api(q);
   S.listings = (r.ok && r.body && r.body.list) ? r.body.list : [];
   S.loading = false;
-  if (S.view === 'market') { paintTicker(); paintHero(); paintGrid(); }
+  paintTicker();   // 티커는 헤더에 있어 모든 화면에 보인다
+  if (S.view === 'market') { paintHero(); paintGrid(); }
 }
 
 /**
@@ -855,7 +1132,7 @@ async function loadMe() {
 /** 화면에 보이는 것만 골라 갱신한다. 5초마다 전 화면을 다시 그리면 조작이 튄다 */
 function refresh() {
   loadSummary();
-  if (S.view === 'market') loadListings();
+  loadListings();   // 상단 티커가 모든 화면에 있으므로 목록은 항상 최신으로
   if (S.me) loadMe();
 }
 
@@ -870,7 +1147,71 @@ function renderView() {
 }
 
 /* ── 6-1. 마켓 ─────────────────────────────────────────── */
+/**
+ * 전체(홈)와 카테고리 페이지를 가른다.
+ *
+ * 홈은 컴팩트 카드 한 종류로 4열. 카테고리에 들어가면 배너·지표가 붙고
+ * 카드가 그 카테고리의 실물 티켓으로 바뀌면서 2열 와이드가 된다.
+ * 매물이 카테고리당 1~3건뿐이라 4열로 깔면 휑한데, 2열 와이드는 2건만 있어도 성립한다.
+ */
 function viewMarket() {
+  return S.cat ? viewCategory() : viewHome();
+}
+
+function viewCategory() {
+  const c = catOf(S.cat);
+  $('view').innerHTML = `
+    <section class="sec" style="--acc:${c.acc}">
+      <div class="ban">
+        <div class="kk">${c.exp === 'POINT' ? 'POINT IN TIME · 시점 만료'
+                        : c.exp === 'RANGE' ? 'DATE RANGE · 기간 만료'
+                        : 'EXTENDABLE · 연장 가능'}</div>
+        <h2>${esc(c.head)}</h2>
+        <p>${esc(c.desc)}</p>
+        <span class="emo">${c.emo}</span>
+      </div>
+      <div class="cstats" id="cstats"></div>
+      <div class="toolbar">
+        <span class="cnt">${c.emo} ${c.label} <b id="cnt">0</b>건</span>
+        <button class="chipbtn ${S.urgentOnly ? 'on' : ''}" onclick="S.urgentOnly=!S.urgentOnly;renderView()">⏰ 24시간 내 마감만</button>
+        <span class="pill ok">🛡 결제금 에스크로 보관</span>
+        <span class="sp"></span>
+        <button class="chipbtn" onclick="pickCat('')">← 전체 보기</button>
+        <select class="selbox" onchange="S.sort=this.value;loadListings()">
+          <option value="expiry" ${S.sort==='expiry'?'selected':''}>마감 임박순</option>
+          <option value="price"  ${S.sort==='price' ?'selected':''}>낮은 가격순</option>
+          <option value="recent" ${S.sort==='recent'?'selected':''}>최근 등록순</option>
+        </select>
+      </div>
+      <div class="wide" id="grid"></div>
+    </section>`;
+  paintCatStats();
+  paintGrid();
+}
+
+/** 카테고리 지표 — 매물이 한 건이어도 페이지가 성립하게 하는 자리 */
+async function paintCatStats() {
+  const box = $('cstats'); if (!box) return;
+  if (!S.catStats) {
+    const r = await api('/api/analysis/category-summary');
+    if (r.ok && r.body) S.catStats = r.body;
+  }
+  const row = S.catStats && S.catStats.categories.find(x => x.category === S.cat);
+  const b2 = $('cstats'); if (!b2) return;
+  if (!row) { b2.innerHTML = ''; return; }
+  const closed = row.tradedCount + row.expiredCount;
+  b2.innerHTML = `
+    <div><div class="k">실효율</div><div class="v acc">${(row.expiryRate * 100).toFixed(1)}%</div>
+      <div class="n">결말이 난 ${closed}건 중 ${row.expiredCount}건 소멸</div></div>
+    <div><div class="k">평균 거래가율</div><div class="v">${row.avgRatio > 0 ? (row.avgRatio * 100).toFixed(1) + '%' : '—'}</div>
+      <div class="n">정가 대비 실거래 평균</div></div>
+    <div><div class="k">누적 거래액</div><div class="v">${num(row.tradedAmount)}<span style="font-size:13px">원</span></div>
+      <div class="n">확정 ${row.tradedCount}건</div></div>
+    <div><div class="k">실효 손실</div><div class="v" style="color:var(--hot)">${row.lostAmount > 0 ? '−' + num(row.lostAmount) : '0'}<span style="font-size:13px">원</span></div>
+      <div class="n">정가 기준 · 등록 ${row.ticketCount}건</div></div>`;
+}
+
+function viewHome() {
   $('view').innerHTML = `
     <div class="kpis" id="kpis"></div>
 
@@ -1017,23 +1358,45 @@ function visibleListings() {
 
 function paintGrid() {
   const box = $('grid'); if (!box) return;
+  const cat = !!S.cat;
   if (S.loading) {
-    box.innerHTML = Array.from({length:8}, () => '<div class="skel"></div>').join('');
+    box.innerHTML = Array.from({ length: cat ? 2 : 8 },
+      () => `<div class="skel"${cat ? ' style="height:200px"' : ''}></div>`).join('');
     return;
   }
   const arr = visibleListings();
   const t = $('cnt'); if (t) t.textContent = num(arr.length);
   const gt = $('grid-title');
-  if (gt) gt.textContent = (S.cat ? catOf(S.cat).emo + ' ' + catOf(S.cat).label : '전체') + ' 매물'
-    + (S.q ? ` — "${S.q}" 검색 결과` : '');
+  if (gt) gt.textContent = '전체 매물' + (S.q ? ` — "${S.q}" 검색 결과` : '');
 
   if (!arr.length) {
-    box.innerHTML = `<div class="empty" style="grid-column:1/-1">
-      <span class="big">🎫</span>조건에 맞는 매물이 없습니다.<br>
-      <span style="font-size:12px">카테고리를 바꾸거나 검색어를 지워보세요.</span></div>`;
+    // 카테고리 페이지가 비면 안내만 두지 않고 등록 유도를 나란히 놓는다.
+    // 이 시장에서 "매물이 없다"는 곧 "지금 등록하면 독점"이라는 뜻이기도 하다
+    box.innerHTML = cat
+      ? `<div class="empty" style="height:var(--tkt-h);display:flex;flex-direction:column;justify-content:center">
+           <span class="big">${catOf(S.cat).emo}</span>아직 ${esc(catOf(S.cat).label)} 매물이 없습니다.<br>
+           <span style="font-size:12px">지금 등록하면 이 카테고리의 첫 매물이 됩니다.</span>
+         </div>` + ghostHtml()
+      : `<div class="empty" style="grid-column:1/-1">
+           <span class="big">🎫</span>조건에 맞는 매물이 없습니다.<br>
+           <span style="font-size:12px">카테고리를 바꾸거나 검색어를 지워보세요.</span></div>`;
     return;
   }
-  box.innerHTML = arr.map(cardHtml).join('');
+  // 홈은 컴팩트 카드 한 종류, 카테고리는 그 카테고리의 실물 티켓
+  let html = arr.map(cat ? ticketHtml : cardHtml).join('');
+  // 2열인데 홀수면 오른쪽이 빈다. 그 자리를 등록 유도로 채운다
+  if (cat && arr.length % 2 === 1) html += ghostHtml();
+  box.innerHTML = html;
+}
+
+function ghostHtml() {
+  const c = catOf(S.cat);
+  return `<button class="ghost" style="--acc:${c.acc}" onclick="openSell()">
+    <span class="g-emo">${c.emo}</span>
+    <b>${esc(c.label)} 티켓이 남아 있나요?</b>
+    <span>못 쓸 것 같다면 지금 넘기세요. 만료되면 값이 0이 됩니다.</span>
+    <span class="g-cta">판매 등록하기 →</span>
+  </button>`;
 }
 
 function cardHtml(l) {
@@ -1076,12 +1439,210 @@ function cardHtml(l) {
   </button>`;
 }
 
+/* ─────────────────────────────────────────────────────────
+   실물 티켓 — 카테고리 페이지 전용
+   ─────────────────────────────────────────────────────────
+   골격(본권+절취선+스텁)과 스텁 타이포는 8종이 완전히 같고 본권만 다르다.
+   필드는 전부 실제 데이터에서 뽑는다 — 좌석 문자열은 카테고리마다 형식이 달라서
+   정규식으로 느슨하게 집어내고, 못 찾으면 '—'로 떨어뜨린다.               */
+const AIRPORT = { 김포:'GMP', 제주:'CJU', 인천:'ICN', 여수:'RSU', 부산:'PUS', 김해:'PUS', 대구:'TAE',
+  광주:'KWJ', 청주:'CJJ', 울산:'USN', 포항:'KPO', 양양:'YNY', 무안:'MWX', 사천:'HIN', 원주:'WJU', 군산:'KUV' };
+const iata = n => AIRPORT[n] || n;
+const pick = (s, re, d) => { const m = String(s || '').match(re); return m ? m[1].trim() : (d ?? '—'); };
+const md = d => d ? String(d).slice(5).replace('-', '.') : '—';
+const daysBetween = (a, b) => (a && b) ? Math.max(1, Math.round((new Date(b) - new Date(a)) / 86400e3)) : null;
+const hhmmOf = iso => new Date(iso).toLocaleTimeString('ko-KR', { hour:'2-digit', minute:'2-digit' });
+
+function routeOf(title) {
+  const m = String(title || '').match(/([가-힣A-Za-z]+)\s*(?:→|->|~)\s*([가-힣A-Za-z]+)/);
+  const t = String(title || '').match(/(\d{1,2}:\d{2})/);
+  return m ? { from: m[1], to: m[2], time: t ? t[1] : null } : null;
+}
+/** 스텁 카운트다운은 자리가 좁다. 하루 미만은 시:분, 넘으면 일 단위 */
+function shortCd(ms) {
+  if (ms <= 0) return '만료';
+  const s = Math.floor(ms / 1000);
+  if (s < 86400) return String(Math.floor(s/3600)).padStart(2,'0') + ':' + String(Math.floor(s%3600/60)).padStart(2,'0');
+  return Math.floor(s / 86400) + '일';
+}
+const GIFT_EMO = [[/커피|아메리카노|라떼|스타벅스|카페/,'☕'], [/아이스크림|파인트|배스킨/,'🍦'],
+  [/치킨|교촌|BBQ|BHC/i,'🍗'], [/케이크|베이커리|파리바게|뚜레/,'🎂'], [/피자/,'🍕'],
+  [/버거|맥도날드|버거킹|롯데리아/,'🍔'], [/영화|CGV|메가박스/,'🎬'], [/편의점|GS25|CU/,'🏪']];
+const giftEmo = t => (GIFT_EMO.find(([re]) => re.test(String(t || ''))) || [null, '🎁'])[1];
+
+/** 스텁 — 8종 공통. 남은 시간과 값이 언제나 같은 자리, 같은 크기에 온다 */
+function stubOf(l, t, ms, inner) {
+  const off = discount(l);
+  return `<div class="stub">${inner || ''}
+    <div>
+      <div class="cd tnum" data-exp="${t.expiresAt}" data-fmt="short" data-urg="1">${shortCd(ms)}</div>
+      <div class="cdl">LEFT</div>
+    </div>
+    <div>
+      <div class="was">${num(t.originalPrice)}</div>
+      <div class="now">${num(l.askingPrice)}</div>
+      ${off > 0 ? `<span class="offb">${off}%↓</span>` : ''}
+    </div>
+  </div>`;
+}
+
+const BODY = {
+  MOVIE: (l, t) => `<div class="body">
+    <div class="frame"></div>
+    <div class="stars">★★★★★</div>
+    <div class="wm">CINEMA TICKET</div>
+    <div class="adm">ADMIT ${t.quantity > 1 ? 'TWO' : 'ONE'}</div>
+    <div class="ttl">${esc(t.title)}</div>
+    <div class="seat">${esc(t.seatInfo || t.quantity + '매')}</div>
+    <div class="film"></div>
+  </div>`,
+
+  CONCERT: (l, t) => `<div class="body">
+    <div class="kk">LIVE PERFORMANCE</div>
+    <div class="ttl">${esc(t.title)}</div>
+    <div class="sub">${dt(t.expiresAt)} · ${t.quantity}매</div>
+    <div class="fields">
+      <div><i>BLOCK</i><b>${esc(pick(t.seatInfo, /([A-Za-z0-9가-힣]+구역)/))}</b></div>
+      <div><i>ROW</i><b>${esc(pick(t.seatInfo, /(\d+)\s*열/))}</b></div>
+      <div><i>SEAT</i><b>${esc(pick(t.seatInfo, /([\d·,\s]+)\s*번/))}</b></div>
+      <div><i>QTY</i><b>${t.quantity}</b></div>
+    </div>
+    <div class="crowd"></div>
+  </div>`,
+
+  SPORTS: (l, t) => `<div class="body">
+    <div class="starbar">★ ★ ★ ★ ★ ★ ★ ★ ★ ★ ★ ★ ★ ★</div>
+    <div class="in">
+      <div class="adm">ADMIT ${t.quantity > 1 ? 'TWO' : 'ONE'}</div>
+      <div class="ttl">${esc(t.title)}</div>
+      <div class="vs">${dt(t.expiresAt)} 경기 시작</div>
+      <div class="boxes">
+        <div><i>SEC</i><b>${esc(pick(t.seatInfo, /(\d+)\s*블록/))}</b></div>
+        <div><i>ZONE</i><b>${esc((String(t.seatInfo || '').split(/\s+/)[0]) || '—')}</b></div>
+        <div><i>SEAT</i><b>${esc(pick(t.seatInfo, /([\d·,\s]+)\s*번/))}</b></div>
+        <div><i>QTY</i><b>${t.quantity}</b></div>
+      </div>
+    </div>
+    <div class="bc"></div>
+  </div>`,
+
+  FLIGHT: (l, t) => {
+    const r = routeOf(t.title);
+    return `<div class="body">
+      <div class="hbar">AIR TICKET</div>
+      <div class="in">
+        <div class="route">${r ? esc(iata(r.from)) + ' <small>✈</small> ' + esc(iata(r.to)) : esc(t.title)}</div>
+        <div class="ttl">${esc(t.title)}</div>
+        <div class="fg">
+          <div><i>SEAT</i><b>${esc(t.seatInfo || '—')}</b></div>
+          <div><i>DEPARTURE</i><b>${esc(r && r.time ? r.time : hhmmOf(t.expiresAt))}</b></div>
+          ${t.mileage ? `<div><i>MILES</i><b>${num(t.mileage)}</b></div>`
+                      : `<div><i>QTY</i><b>${t.quantity}</b></div>`}
+        </div>
+      </div>
+      <span class="plane">✈️</span>
+      <div class="bc"></div>
+    </div>`;
+  },
+
+  TRAIN: (l, t) => {
+    const r = routeOf(t.title);
+    const line = (String(t.title).match(/(KTX|SRT|ITX|무궁화|새마을)/) || ['KORAIL'])[0];
+    return `<div class="body">
+      <div class="dot"></div>
+      <div class="kk">${esc(line)} · SPECIAL EXPRESS</div>
+      <div class="top">
+        <div class="qr"></div>
+        <div>
+          <div class="route">${r ? esc(r.from) + ' → ' + esc(r.to) : esc(t.title)}</div>
+          <div class="times">${esc(r && r.time ? r.time : hhmmOf(t.expiresAt))} 출발</div>
+        </div>
+      </div>
+      <div class="meta">CAR <b>${esc(pick(t.seatInfo, /(\d+)\s*호차/))}호차</b> ·
+        SEAT <b>${esc(pick(t.seatInfo, /(\d+)\s*석/))}석</b> · QTY <b>${t.quantity}매</b><br>
+        TICKET NO. <b>${String(l.id).padStart(4,'0')}-${String(t.id).padStart(4,'0')}</b></div>
+    </div>`;
+  },
+
+  EXHIBITION: (l, t) => `<div class="body">
+    <div class="form">
+      <div class="frame"></div>
+      <div class="kk">PLANB ORIGINAL TICKET</div>
+      <div class="ttl">${esc(t.title)}</div>
+      <div class="rows">
+        <div><i>Period</i><b>${md(t.validFrom)} – ${md(t.extendedUntil || t.validUntil)}</b></div>
+        <div><i>Qty</i><b>${t.quantity}매 · 자유 관람</b></div>
+        <div><i>Seller</i><b>${esc(l.sellerId)}</b></div>
+      </div>
+    </div>
+    <div class="poster">${/팝업|스토어|POP/i.test(t.title) ? '🧸' : '🖼️'}</div>
+  </div>`,
+
+  HOTEL: (l, t) => {
+    const n = daysBetween(t.validFrom, t.extendedUntil || t.validUntil);
+    return `<div class="body">
+      <div class="kk">ROOM KEY · ${t.quantity}실</div>
+      <div class="ttl">${esc(t.title)}</div>
+      <div class="stay">
+        <div><i>CHECK IN</i><b>${md(t.validFrom)}</b></div>
+        <div class="arw" data-n="${n ? n + '일 이내' : '기간 내'}"></div>
+        <div><i>CHECK OUT</i><b>${md(t.extendedUntil || t.validUntil)}</b></div>
+      </div>
+      <div class="chip"></div>
+      <div class="rm">LISTING #${l.id}</div>
+    </div>`;
+  },
+
+  GIFTICON: (l, t) => {
+    const ext = !!t.extendedUntil;
+    return `<div class="body">
+      <div class="dash"></div>
+      <div class="prod">${giftEmo(t.title)}</div>
+      <div class="tx">
+        <div class="kk">GIFT VOUCHER · 교환권</div>
+        <div class="ttl">${esc(t.title)}</div>
+        <div class="exp">${ext ? `<s>${md(t.validUntil)}</s> → <b>${md(t.extendedUntil)}</b>`
+                               : '유효기한 ' + md(t.validUntil)}</div>
+        <span class="badge">${ext ? '기한 연장됨' : '기한 연장 가능'}</span>
+      </div>
+    </div>`;
+  },
+};
+const STUB_EXTRA = {
+  MOVIE:    '<div class="bcv"></div>',
+  GIFTICON: '<div class="bcv"></div>',
+  SPORTS:   '<div class="vert">ADMIT ONE</div>',
+  FLIGHT:   '<div class="hbar2">BOARDING PASS</div>',
+};
+
+function ticketHtml(l) {
+  const t = l.ticket, c = catOf(t.category);
+  const ms = remain(t.expiresAt);
+  const render = BODY[t.category] || BODY.MOVIE;
+  const extra = t.category === 'CONCERT'
+    ? `<div class="vert">${esc(t.title)}</div>`
+    : (STUB_EXTRA[t.category] || '');
+  return `<button class="tkt t-${esc(t.category)} ${ms <= 0 ? 'dead' : ''}"
+      style="--acc:${c.acc}" onclick="openDetail(${l.id})">
+    ${render(l, t)}
+    <div class="perf"></div>
+    ${stubOf(l, t, ms, extra)}
+    ${l.status === 'RESERVED' ? '<span class="rsv">예약 진행 중</span>' : ''}
+  </button>`;
+}
+
 /* 1초마다 숫자만 갈아끼운다. 목록을 다시 그리면 스크롤이 튀고 모달이 닫힌다 */
 function tickCountdowns() {
   document.querySelectorAll('[data-exp]').forEach(el => {
     const ms = remain(el.dataset.exp);
     const u = urgency(ms);
-    el.textContent = fmtCd(ms);
+    el.textContent = el.dataset.fmt === 'short' ? shortCd(ms) : fmtCd(ms);
+    if (el.dataset.urg) {
+      // 스텁 색은 카테고리마다 정해져 있다. 급할 때만 긴급색으로 덮어쓴다
+      el.style.color = (ms > 0 && ms < 12 * 3600e3) ? u.c : '';
+      el.classList.toggle('blink', u.blink);
+      return;
+    }
     if (el.classList.contains('cd')) {
       el.classList.toggle('blink', u.blink);
       const host = el.closest('.tk') || el.closest('.cdbig');
@@ -1486,7 +2047,7 @@ async function doList(ticketId) {
 function sellNewHtml() {
   return `
     <div class="fld"><label>카테고리</label>
-      <select id="tk-cat">${CATS.filter(c => c[0]).map(c => `<option value="${c[0]}">${c[2]} ${c[1]}</option>`).join('')}</select></div>
+      <select id="tk-cat">${CATS.filter(c => c.k).map(c => `<option value="${c.k}">${c.emo} ${c.label}</option>`).join('')}</select></div>
     <div class="fld"><label>제목</label><input id="tk-title" placeholder="예) 아이유 콘서트 - 올림픽홀" maxlength="200"></div>
     <div class="row2">
       <div class="fld"><label>정가 (전체 합계)</label><input id="tk-price" type="number" placeholder="264000" min="1"></div>
@@ -1937,11 +2498,36 @@ async function runConc(useLock, btn) {
 /* ═══════════════════════════════════════════════════════════
    14. 구동
    ═══════════════════════════════════════════════════════════ */
+/**
+ * 진입 파라미터 — 보고서 캡처를 재현 가능하게 하려고 열어둔 문.
+ *   ?v=my|report|ops   처음 열 화면
+ *   ?c=FLIGHT          처음 열 카테고리
+ *   ?u=user04&p=...    자동 로그인 (자격증명은 코드에 없고 호출자가 넘긴다)
+ * 아무것도 안 붙이면 지금까지와 완전히 같게 동작한다.
+ */
+async function applyEntryParams() {
+  const q = new URLSearchParams(location.search);
+  const u = q.get('u'), p = q.get('p');
+  if (u && p) {
+    const r = await post('/api/members/login', { id: u, password: p });
+    if (r.ok) { S.me = { id: r.body.id, balance: r.body.balance }; await loadMe(); loadNotifs(); }
+  }
+  if (q.get('c')) S.cat = q.get('c');
+  if (q.get('v')) S.view = q.get('v');
+  if (q.get('sub')) S.mysub = q.get('sub');
+}
+
 (async function boot() {
+  await applyEntryParams();
   renderNav(); renderCats(); renderView();
   await Promise.all([loadSummary(), loadListings()]);
   setInterval(tickCountdowns, 1000);
   setInterval(refresh, 5000);
+
+  // 캡처용 마무리 동작 — 버튼을 눌러야 나오는 화면을 주소만으로 재현한다
+  const q = new URLSearchParams(location.search);
+  if (q.get('run') === 'integrity' && S.view === 'ops') await runIntegrity();
+  if (q.get('scroll')) setTimeout(() => window.scrollTo(0, Number(q.get('scroll'))), 400);
 })();
 </script>
 </body>
