@@ -122,17 +122,6 @@ public class Ticket {
     @Column(name = "expiry_warned_at")
     private LocalDateTime expiryWarnedAt;
 
-    /**
-     * 분할 발행된 티켓이면 원본 티켓 ID.
-     *
-     * 2매짜리를 두 명이 1매씩 나눠 사면 확정 시점에 1매짜리를 새로 발행하는데,
-     * 그게 어디서 갈라져 나왔는지 추적하려고 둠. 직접 등록한 티켓은 NULL.
-     * 연관관계로 안 걸고 ID만 들고 있는 건, 원본을 따라 올라가는 조회가 필요한 게 아니라
-     * 통계에서 분할본을 걸러내는 용도라서 조인까지는 필요 없기 때문임.
-     */
-    @Column(name = "source_ticket_id")
-    private Long sourceTicketId;
-
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 

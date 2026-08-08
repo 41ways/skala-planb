@@ -59,6 +59,13 @@ public interface ListingRepository extends JpaRepository<Listing, Long> {
     /** 거래 요약용 — 판매자로서의 상태별 건수 */
     long countBySellerIdAndStatusIn(String sellerId, Collection<ListingStatus> statuses);
 
+    /** 대시보드 — 상태별 판매 건수 */
+    long countByStatus(ListingStatus status);
+
+    /** 대시보드 — 만료 임박한 판매 건수 */
+    long countByStatusInAndTicketExpiresAtBetween(
+            Collection<ListingStatus> statuses, LocalDateTime from, LocalDateTime to);
+
     /**
      * 예약·결제용 비관적 락 (SELECT ... FOR UPDATE).
      *

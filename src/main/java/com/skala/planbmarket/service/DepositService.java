@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.skala.planbmarket.common.PlanbMetrics;
 import com.skala.planbmarket.domain.entity.Deposit;
 import com.skala.planbmarket.domain.entity.Listing;
 import com.skala.planbmarket.domain.entity.Member;
@@ -36,6 +37,7 @@ public class DepositService {
 
     private final DepositRepository depositRepository;
     private final LedgerService ledgerService;
+    private final PlanbMetrics metrics;
 
     /**
      * 예약금 홀드. 회원 잔액 → DEPOSIT_POOL.
@@ -95,6 +97,9 @@ public class DepositService {
     @Transactional
     public void forfeit(Deposit deposit, LocalDateTime now, String memo) {
         deposit.resolve(DepositStatus.FORFEITED, now);
+        // 몰수는 예약 취소(사용자)와 제한시간 초과(스케줄러) 두 경로로 들어온다.
+        // 여기서 세면 둘 다 잡힌다 — AOP로는 스케줄러 경로가 안 잡힌다
+        metrics.depositForfeited();
         ledgerService.transfer(SystemAccount.DEPOSIT_POOL.name(), SystemAccount.PLATFORM.name(),
                 deposit.getAmount(), LedgerReason.DEPOSIT_FORFEIT, REF_TYPE, deposit.getId(), memo);
     }

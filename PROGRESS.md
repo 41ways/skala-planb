@@ -1,7 +1,7 @@
 # PlanB Market — 진행 상황
 
-> 8단계까지 완료. 다음은 9단계(Actuator + AOP + 대시보드).
-> 마지막 검증: `scripts/verify.sh` **97/97 통과**
+> **10단계까지 완료.** 남은 것은 11단계(PDF 보고서)와 캡처.
+> 마지막 검증: `scripts/verify.sh` **119/119 통과**
 
 ---
 
@@ -15,7 +15,9 @@
 
 | 주소 | 용도 |
 |---|---|
+| `http://localhost:8080/` | **대시보드** — 소멸 모니터링 |
 | `http://localhost:8080/swagger-ui.html` | API 문서 겸 테스트 |
+| `http://localhost:8080/actuator/health` | 커스텀 HealthIndicator 2종 |
 | `http://localhost:8080/h2-console` | DB 콘솔 (JDBC URL을 **`jdbc:h2:mem:planb`** 로 바꿀 것, 사용자 `sa`, 비번 없음) |
 
 전체 시나리오 검증:
@@ -186,6 +188,86 @@
   계속 실패함. 락 없음/락 적용을 나란히 보여주려면 반복 실행이 돼야 함.
   대신 무슨 일이 있었는지는 응답 `lostUpdates`에 남김
 
+### 9단계 — Actuator + AOP + 대시보드
+
+**AOP 2종** (`aop/`)
+
+| Aspect | 대상 | 하는 일 |
+|---|---|---|
+| `ApiLogAspect` | `controller` 패키지 전체 | 요청/응답/처리시간. 비밀번호는 정규식으로 마스킹 |
+| `TradeAuditAspect` | Escrow·Deposit·Ledger의 public 메서드 | 금전 이동 감사 로그 + `planb.audit.intercepted` |
+
+**Actuator**
+- `ExpiryBacklogHealthIndicator` — 만료 처리가 밀린 티켓 5건 이상이면 DOWN
+- `LedgerIntegrityHealthIndicator` — 차대·보관계정 불일치면 DOWN (1원이라도)
+- 커스텀 메트릭 5종 (`common/PlanbMetrics`)
+- `build.gradle`에 `micrometer-registry-prometheus` 추가 (없으면 `/actuator/prometheus`가 404)
+- `application.yml`에 노출 범위 + `health.show-details: always`
+
+**대시보드** — `src/main/resources/static/index.html` (외부 라이브러리 0개)
+- 카드 4종 · 만료임박 목록(1초 카운트다운, 긴급도 색상) · 카테고리 필터
+- 차트 2종 — 카테고리별 실효율(CSS 막대), 일별 실효 손실(SVG 꺾은선)
+- 정합성 검증 버튼, 동시성 테스트 버튼 2종(락 없음/락 적용 나란히)
+- 계정 전환 드롭다운(user01~05) — 알림 안읽음 폴링용
+- 5초 폴링 + 1초 카운트다운
+
+**`GET /api/admin/dashboard-summary`** — 상단 카드 재료. **JPA** (독립 건수·합계라 GROUP BY 없음)
+
+#### ⭐ AOP 프록시 한계를 지표로 증명함
+
+SPEC 7장은 `TradeAuditAspect`가 카운터를 올리라고 했지만 **그러면 숫자가 틀린다.**
+프록시는 public 외부 호출만 잡는데, `settle()`·`voidEscrow()`는 package-private이고
+내부 호출·스케줄러 경로로 들어온다.
+
+그래서 **도메인 카운터는 서비스에서 직접**(`PlanbMetrics`), AOP는 **"무엇을 봤는지"만**
+따로 센다. 검증 스크립트를 돌린 뒤 두 지표를 비교하면:
+
+```
+planb.escrow.confirmed             > 0     ← settle()이 실제로 돌았다
+planb.audit.intercepted{method=}   reserve, pay, confirm, hold, capture,
+                                   release, forfeit, transfer, …
+                                   ↑ settle 없음, voidEscrow 없음
+```
+
+**돌긴 돌았는데 AOP에는 흔적이 없다.** `verify.sh` 9-2절이 이걸 단정으로 박아뒀다.
+8단계의 `reconcileBalances()` 사건과 같은 뿌리 — 프록시 한계는 트랜잭션과 AOP에
+똑같이 적용된다. `NOTES.md` 18절, 보고서 5-12절 재료.
+
+#### 확정한 것
+
+| 항목 | 결정 | 근거 |
+|---|---|---|
+| 만료 백로그 임계값 | **5건** | 스케줄러가 1분 주기라 정상 상태에서도 소수는 남음. 1건이면 깜빡여서 못 믿을 지표가 됨 |
+| 원장 정합성 임계값 | **없음 (1원도 DOWN)** | 이체는 원장 2줄을 한 트랜잭션에 씀. 안 맞으면 곧 버그 |
+| 헬스체크 범위 | SUM 쿼리만 (회원별 대조 제외) | 헬스는 수십 초마다 불림. 전 회원 순회는 검증 API의 몫 |
+| 카운터 위치 | 서비스 직접 | AOP로 세면 자동확정이 통째로 빠짐 |
+| `planb.pair.matched` | **`planb.reservation.created`로 대체** | 1매 대기가 5단계에서 사라져 셀 사건 자체가 없음 |
+| 대시보드 차트 | CSS/SVG 직접 | CDN에 기대면 오프라인 시연에서 화면이 빔 |
+| 카드 순서 | 만료임박 → 실효 → 예약 → 거래액 | "가만히 두면 손해 나는 것"이 위로 |
+
+### 10단계 — 전체 검증
+
+**`scripts/verify.sh` 119/119 통과** (55 → 81 → 97 → 119).
+
+PLAN 10단계의 필수 시나리오 6종이 전부 스크립트 안에 있다:
+
+| # | 시나리오 | 자리 | 결과 |
+|---|---|---|---|
+| 1 | 정상 거래 (등록→예약→결제→확정) | step 1 | ✅ 판매자는 확정 전까지 못 받음, 수수료 5% 차감 |
+| 2 | 만료 실효 | step 4-3 | ✅ 스케줄러가 티켓 3건 EXPIRED, 알림 발송 |
+| 3 | 예약금 몰수 | step 3·4 | ✅ 10분 후 취소 / 제한시간 초과 둘 다 PLATFORM으로 |
+| 4 | ~~부분성사~~ → **청약철회·판매자 철회** | step 2·5 | ✅ 둘 다 전액 환불 (5단계 재설계로 대체) |
+| 5 | 동시성 락 없음 vs 적용 | step 8 | ✅ 5~9건 중복 → 1건, 그런데 원장은 내내 맞음 |
+| 6 | **최종 정합성** | step 10 | ✅ PASS |
+
+> 4번은 SPEC의 부분 성사가 5단계에서 사라져서 대체했다. 검증하려던 것("한쪽이
+> 이탈했을 때 돈이 어디로 가는가")은 청약철회(전액 환불)와 몰수(PLATFORM)에
+> 그대로 살아 있다.
+
+**최종 상태** — 차대 4,773,800 일치 / ESCROW_POOL 0 / DEPOSIT_POOL 0 / PLATFORM 66,945
+
+전 시나리오를 돌린 뒤에도 **돈이 한 푼도 새지 않았다.** 이게 보고서 6장의 결론이다.
+
 ---
 
 ## 2. 5단계 재설계 — 1매 대기 제거
@@ -281,19 +363,28 @@ OPEN ──(예약)──> RESERVED ──(결제)──> IN_ESCROW ──(확�
 
 ## 5. 알려진 이슈 · 미완성
 
-### 미구현 (예정)
-- **AOP·Actuator 커스텀 없음** — 9단계 예정
-- **대시보드 없음** — 9단계 예정
-- **`GET /api/admin/dashboard-summary` 없음** — SPEC 4-8에 있지만 대시보드 재료라 9단계에서
-  같이 만드는 게 맞음. 지금 만들면 화면이 뭘 필요로 하는지 모른 채 모양을 정하게 됨
+### 미구현 — 이번 범위에서 의도적으로 제외 (보고서 7장)
+- **캡처** — 아래 "캡처 진행 상황" 참조. 코드는 다 됐고 화면만 남음
+- **PDF 보고서** — 11단계
+- SPEC 11장의 제외 항목들(판매자 경고·제재, 대기자 프로필, 신뢰도 등급, JWT, Docker/K8s)
 
-### 정리 안 한 것 (7단계 범위 밖)
-- **`Ticket.sourceTicketId`가 죽은 필드** — 엔티티와 `TicketResponse`에만 있고 읽고 쓰는
-  코드가 0건. 1매 분할 발행의 잔재라 5단계 재설계 때 같이 빠졌어야 함. 시드도 전부 NULL
-- **`Escrow.quantity`** — 항상 `ticket.quantity` 복사본. 전량 구매만 남아서 독립적 의미가
-  없어짐. 다만 통계에는 무해 — `amount`와 `originalPrice`가 둘 다 전체 기준이라 비율이 맞음
-- **`TicketStatus` javadoc이 아직 1매 대기를 설명함** — "2매짜리를 두 명이 나눠 산 경우"
-- 셋 다 동작에 영향 없음. 캡처를 다시 찍을 일이 없는 10단계에 몰아서 정리할 것
+### 10단계에서 정리한 것
+- **`Ticket.sourceTicketId` 제거** — 엔티티·`TicketResponse`·시드 컬럼까지. 1매 분할 발행의
+  잔재라 5단계 재설계 때 같이 빠졌어야 했음. 읽고 쓰는 코드가 0건이었음
+- **`TicketStatus` javadoc** — 아직 1매 대기를 설명하고 있어서 새 흐름으로 고침
+- 캡처를 아직 안 찍었을 때가 응답 모양을 바꿀 마지막 기회라 이 시점에 몰아서 함
+
+> 시드를 고치다 한 번 깨뜨렸다. `NULL, NULL, DATEADD(` 패턴으로 지웠는데
+> **의도한 자리(`expiry_warned_at`, `source_ticket_id`)가 아니라 앞쪽
+> (`valid_until`, `extended_until`)이 먼저 걸렸다.** 앱이 "Column count does not match"로
+> 아예 안 떴다. 상태 리터럴(`'LISTED'`)을 앵커로 삼아 다시 하고,
+> 35행 전부 컬럼 수와 값 수가 같은지 세어서 확인했다.
+> **일괄 치환은 "몇 건 바뀌었나"가 아니라 "맞는 자리가 바뀌었나"를 봐야 한다.**
+
+### 남겨둔 것
+- **`Escrow.quantity`** — 항상 `ticket.quantity` 복사본이라 독립적 의미는 없지만,
+  거래 시점의 수량을 기록으로 남기는 값이라 그대로 둠. 통계에도 무해
+  (`amount`와 `originalPrice`가 둘 다 전체 기준이라 비율이 맞음)
 
 ### 알아둘 점
 - **`Paging`의 offset 해석** — `offset / count`로 페이지 번호를 만들기 때문에 offset이
@@ -339,12 +430,12 @@ OPEN ──(예약)──> RESERVED ──(결제)──> IN_ESCROW ──(확�
   > 깨지기 어려워질 뿐 아니라, **API와 SQL 두 경로가 같은 답을 내는지**까지 보게 된다.
 
 ### 캡처 진행 상황
-`docs/captures/`에 일부 있으나 **5단계 재설계로 상당수가 무효화됨**
-(`purchase` API 삭제, 1매 대기 삭제, Swagger 태그·엔드포인트 변경).
-살아 있는 것: `01`, `02`, `04`, `04b`, `05`, `07`.
+`docs/captures/`에 남아 있는 것 중 **아직 유효한 것**: `01`, `02`, `02b`, `04`, `04b`, `05`.
+`03_swagger_전체API`는 7~9단계에서 엔드포인트가 늘어 다시 찍어야 한다.
+`image-1786099*.png` 10장은 5단계 재설계로 무효화된 것들 — 지워도 된다.
 
-캡처는 **8단계 끝에 1차, 10단계에 최종** 두 번 몰아서 찍기로 함.
-`scripts/verify.sh`를 돌리면 📸 표시가 뜨는 12개 지점이 캡처할 자리.
+**나머지는 아직 안 찍었다.** 코드가 다 끝났으므로 이제 한 번에 찍으면 된다.
+자세한 건 아래 8절.
 
 ---
 
@@ -403,46 +494,64 @@ curl -X POST http://localhost:8080/api/admin/simulate-concurrent \
 
 ---
 
-## 8. 9단계에서 할 일 — Actuator + AOP + 대시보드
+## 8. 남은 일 — 캡처 + 11단계(PDF 보고서)
 
-### 만들 것
+### 8-1. 캡처 — 이제 한 번에 찍으면 된다
 
-**AOP 2종** (`aop/`)
-- `ApiLogAspect` — `controller` 패키지 전체. 요청/응답/처리시간
-- `TradeAuditAspect` — 거래 서비스 메서드. 금전 이동 감사 로그 + Micrometer 카운터
+**코드는 다 됐다.** 9·10단계가 기존 API를 안 건드렸으므로 지금 찍는 건 끝까지 살아남는다.
 
-**Actuator**
-- 커스텀 HealthIndicator 2종 — `ExpiryBacklogHealthIndicator`, `LedgerIntegrityHealthIndicator`
-- 커스텀 메트릭 4종 — `planb.escrow.created` / `.confirmed`, `planb.deposit.forfeited`,
-  `planb.ticket.expired`
-- `application.yml`에 `management.endpoints.web.exposure.include` 추가 필요
-  (지금은 health·info만 열려 있음)
+인메모리 H2라 **한 세션 = 앱 새로 띄우고 `verify.sh` 완주**다. 스크립트가 📸 표시를
+띄우는 지점이 곧 찍을 자리이고, 지금 20곳이다.
 
-**대시보드** — `static/index.html`, 다크 테마 + 네온, 카운트다운, 차트, 검증 버튼
-
-**`GET /api/admin/dashboard-summary`** — SPEC 4-8. 대시보드가 뭘 필요로 하는지 정한 뒤에 만들 것
-
-### 미리 정해둘 것
-- **AOP 프록시 한계를 실증으로 남길 것** — 이미 8단계에서 걸렸음(`NOTES.md` 13-6절).
-  SPEC 12장 6번 항목의 답이 이미 있으니, `TradeAuditAspect`를 붙일 때
-  `EscrowService.settle()` 같은 **내부 호출 메서드에는 안 걸린다**는 걸 로그로 한 번 더 보일 것
-- **HealthIndicator가 DOWN을 내는 조건** — 임계값을 정해야 함.
-  만료 처리 지연 건수 몇 건부터? 원장 차대는 1원이라도 어긋나면 DOWN이 자연스러움
-- **대시보드가 부를 API** — 이미 다 있음. `expiring-soon`, `category-summary`,
-  `expiry-loss`, `integrity-check`, `simulate-concurrent`.
-  `dashboard-summary`만 새로 만들면 됨
-- **차트는 외부 라이브러리 없이** CSS/SVG로 (SPEC 10장)
-
-### 마친 뒤
+```bash
+./gradlew bootRun
+```
 
 ```bash
 ./scripts/verify.sh
 ```
 
-97개가 그대로 통과해야 함.
+브라우저 탭을 미리 네 개 열어두면 편하다:
 
-> 9·10단계는 기존 API를 안 건드리므로 **8단계에서 찍은 캡처는 끝까지 살아남는다.**
-> 아직 안 찍었으면 지금이 1차 캡처 시점 — 📸 표시가 뜨는 자리를 한 번에 찍을 것.
+| 탭 | 주소 |
+|---|---|
+| 대시보드 | `http://localhost:8080/` |
+| Swagger | `http://localhost:8080/swagger-ui.html` |
+| H2 콘솔 | `http://localhost:8080/h2-console` |
+| Health | `http://localhost:8080/actuator/health` |
+
+**우선순위** — 시간이 없으면 위에서부터:
+
+1. `22_동시성_락없음` / `23_동시성_락적용` ⭐⭐ — PDF 하이라이트.
+   **락 없음 응답의 `ledgerBalanced: true`가 같이 보이게** 찍을 것
+2. `29_최종정합성검증` ⭐ — 보고서 6장의 결론
+3. `27_대시보드_전체` — 차별화 포인트. 카운트다운이 붉게 점멸하는 순간을 노릴 것
+4. `26_AOP로그` — 콘솔 `[AUDIT]` 줄 + `planb.audit.intercepted` 태그 목록(settle 없음)
+5. `08_정합성검증_PASS`, `19_가격추천`, `24_actuator_health`
+6. 나머지
+
+`docs/captures/`에 `NN_설명.png`로 모을 것. `image-1786099*.png` 10장은 5단계 재설계로
+무효화된 것들이라 지우면 된다.
+
+### 8-2. 11단계 — PDF 보고서
+
+목차는 `PLAN.md` 11단계에 있고, **5장(설계 판단 지점)이 승부처**다.
+`NOTES.md` 부록의 구성표를 그대로 옮기면 5-1 ~ 5-14가 나온다.
+
+SPEC과 달라진 것들은 보고서에서 **"바꾼 이유"로 쓸 자리**다. 숨길 게 아니라 재료다:
+
+| SPEC | 실제 | 어디에 |
+|---|---|---|
+| 1매 대기 매칭 | 제거, 예약금을 본류로 | 5-3 (덜어내는 판단) |
+| 수수료 없음 | 5% | 5-5 (유인 구조) |
+| 자동확정 = 만료 시각 | 만료 −10분 | 5-4 (충돌을 없앤 판단) |
+| `CASE WHEN`으로 구간 나눔 | 경계를 자바 한 곳에 | 5-8 (잠복 버그를 피한 판단) |
+| AOP가 카운터를 올림 | 서비스가 올림 | 5-12 (프록시 한계) |
+| `planb.pair.matched` | `planb.reservation.created` | 9단계 표 |
+| 엔티티 8개 | 7개 | 5-3 |
+
+7장(한계)에 옮길 것: `NOTES.md` 15절, 아래 5절 "알려진 이슈", SPEC 11장 제외 항목,
+그리고 **잔액이 공개 조회에 노출된다는 점**.
 
 ---
 

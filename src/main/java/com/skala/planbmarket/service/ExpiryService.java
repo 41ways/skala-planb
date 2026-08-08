@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.skala.planbmarket.domain.entity.Deposit;
 import com.skala.planbmarket.domain.entity.Escrow;
+import com.skala.planbmarket.common.PlanbMetrics;
 import com.skala.planbmarket.domain.entity.Listing;
 import com.skala.planbmarket.domain.entity.Ticket;
 import com.skala.planbmarket.domain.enums.DepositStatus;
@@ -61,6 +62,7 @@ public class ExpiryService {
     private final EscrowService escrowService;
     private final DepositService depositService;
     private final NotificationService notificationService;
+    private final PlanbMetrics metrics;
 
     /**
      * 만료된 티켓을 실효 처리.
@@ -84,6 +86,7 @@ public class ExpiryService {
                     "TICKET", ticket.getId());
         }
 
+        metrics.ticketExpired(expired.size());
         if (!expired.isEmpty()) {
             log.info("만료 티켓 {}건 실효 처리", expired.size());
         }

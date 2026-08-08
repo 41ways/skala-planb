@@ -48,6 +48,28 @@ springdoc:
     # DELETE(회원 삭제)가 태그 맨 위로 올라와서 첫인상이 이상해짐.
     # 안 걸면 같은 경로끼리 묶여서 나오는데 그게 훨씬 읽기 나음
 
+management:
+  endpoints:
+    web:
+      exposure:
+        # 기본값은 health·info뿐이라 metrics·prometheus가 404가 남.
+        # 운영이라면 골라서 열 자리지만 이 프로젝트는 시연·검증이 목적이라 넷을 연다
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      # 안 켜면 커스텀 HealthIndicator가 UP/DOWN 판정에는 반영되는데 응답에는 안 보임.
+      # "무엇이 왜 DOWN인지"가 안 보이면 헬스체크가 절반만 하는 셈
+      show-details: always
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: PlanB Market
+    description: 소멸성 자산(만료 기한이 있는 티켓)의 P2P 양도 플랫폼
+    version: 1.0.0
+
 logging:
   level:
     com.skala.planbmarket: DEBUG

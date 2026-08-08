@@ -3,8 +3,11 @@ package com.skala.planbmarket.domain.enums;
 /**
  * 티켓 상태.
  *
- * 2매짜리를 두 명이 1매씩 나눠 산 경우엔 거래 확정마다 1매짜리 티켓을 새로 발행하고
- * 원본 quantity를 깎음. 원본이 0이 되는 순간 TRANSFERRED로 넘어감.
+ * 전량 양도만 있으므로 거래가 확정되면 소유자가 바뀌고 바로 TRANSFERRED가 됨.
+ * (SPEC에는 2매를 두 명이 나눠 사는 흐름이 있었지만 5단계에서 걷어냈음 —
+ *  그때 분할 발행 개념도 같이 사라졌다)
+ *
+ * OWNED → LISTED → TRANSFERRED / EXPIRED. 철회하면 LISTED에서 OWNED로 되돌아감.
  */
 public enum TicketStatus {
 

@@ -452,7 +452,87 @@ shot "⭐⭐ 22_동시성_락없음 / 23_동시성_락적용 — 두 응답을 �
 info "락 없음 응답의 ledgerBalanced=true 를 같이 보일 것 — 정합성 검증이 못 잡는 버그라는 근거"
 
 # ══════════════════════════════════════════════════════════════
-step "9. 최종 정합성"
+step "9. Actuator — 커스텀 HealthIndicator · 메트릭"
+# ══════════════════════════════════════════════════════════════
+HEALTH=$(curl -s "$BASE/actuator/health")
+hpick() { echo "$HEALTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print($1)"; }
+
+assert_eq "health 전체 UP" UP "$(hpick "d['status']")"
+assert_eq "커스텀 — 만료 백로그" UP "$(hpick "d['components']['expiryBacklog']['status']")"
+assert_eq "커스텀 — 원장 정합성" UP "$(hpick "d['components']['ledgerIntegrity']['status']")"
+# show-details를 안 켜면 판정에는 반영되는데 이유가 안 보인다. 보이는지 확인
+assert_eq "임계값이 응답에 보임" 5 "$(hpick "d['components']['expiryBacklog']['details']['threshold']")"
+assert_eq "원장 차대가 응답에 보임" true \
+  "$(hpick "str(d['components']['ledgerIntegrity']['details']['totalDebit'] == d['components']['ledgerIntegrity']['details']['totalCredit']).lower()")"
+shot "24_actuator_health — 커스텀 항목 두 개가 details까지 펼쳐진 화면"
+
+metric() { curl -s "$BASE/actuator/metrics/$1" | python3 -c "
+import sys,json
+try: print(int(json.load(sys.stdin)['measurements'][0]['value']))
+except Exception: print('없음')"; }
+
+assert_eq "예약 생성 카운터" true "$(python3 -c "print(str($(metric planb.reservation.created) > 0).lower())")"
+assert_eq "에스크로 생성 카운터" true "$(python3 -c "print(str($(metric planb.escrow.created) > 0).lower())")"
+assert_eq "거래 확정 카운터" true "$(python3 -c "print(str($(metric planb.escrow.confirmed) > 0).lower())")"
+assert_eq "예약금 몰수 카운터" true "$(python3 -c "print(str($(metric planb.deposit.forfeited) > 0).lower())")"
+assert_eq "티켓 실효 카운터" true "$(python3 -c "print(str($(metric planb.ticket.expired) > 0).lower())")"
+assert_eq "prometheus 노출" true \
+  "$(python3 -c "print(str($(curl -s "$BASE/actuator/prometheus" | grep -c '^planb') > 0).lower())")"
+shot "25_actuator_metrics — planb.escrow.confirmed 응답"
+
+# ══════════════════════════════════════════════════════════════
+step "9-2. AOP 프록시 한계 실증 ⭐ — SPEC 12장 6번 항목의 답"
+# ══════════════════════════════════════════════════════════════
+# 이게 이 단계의 핵심이다. 같은 사건을 두 방식으로 세어놓고 차이를 보인다.
+#   planb.escrow.confirmed        서비스에서 직접  → settle()이 돌 때마다 올라감
+#   planb.audit.intercepted       AOP가 가로챈 것  → public 외부 호출만 잡힘
+#
+# settle()은 package-private이고 confirm()이 클래스 안에서 부른다. 자동확정
+# 스케줄러도 이 메서드로 들어온다. 즉 AOP는 settle()을 영영 못 본다
+INTERCEPTED=$(curl -s "$BASE/actuator/metrics/planb.audit.intercepted")
+methods() { echo "$INTERCEPTED" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+tags=[t for t in d.get('availableTags',[]) if t['tag']=='method']
+print(','.join(sorted(tags[0]['values'])) if tags else '')"; }
+SEEN=$(methods)
+info "AOP가 가로챈 메서드: $SEEN"
+
+# 외부에서 부르는 public 메서드는 잡힌다
+assert_eq "AOP가 reserve를 봄" true "$(python3 -c "print(str('reserve' in '$SEEN'.split(',')).lower())")"
+assert_eq "AOP가 pay를 봄" true "$(python3 -c "print(str('pay' in '$SEEN'.split(',')).lower())")"
+assert_eq "AOP가 confirm을 봄" true "$(python3 -c "print(str('confirm' in '$SEEN'.split(',')).lower())")"
+
+# ⭐ 그런데 정작 돈을 옮기는 settle()은 못 본다 — 프록시를 안 거치기 때문
+assert_eq "⭐ AOP가 settle은 못 봄 (내부 호출)" false \
+  "$(python3 -c "print(str('settle' in '$SEEN'.split(',')).lower())")"
+assert_eq "⭐ AOP가 voidEscrow도 못 봄" false \
+  "$(python3 -c "print(str('voidEscrow' in '$SEEN'.split(',')).lower())")"
+# 그런데 확정은 실제로 일어났다. 서비스에서 직접 센 카운터가 증거
+assert_eq "⭐ 그래도 확정은 일어났음 (서비스 카운터)" true \
+  "$(python3 -c "print(str($(metric planb.escrow.confirmed) > 0).lower())")"
+info "→ settle()은 돌았는데 AOP에는 흔적이 없다. SPEC 7장이 경고한 프록시 한계"
+shot "⭐ 26_AOP로그 — 콘솔의 [AUDIT] 줄과 위 두 지표를 같이"
+
+# ══════════════════════════════════════════════════════════════
+step "9-3. 대시보드"
+# ══════════════════════════════════════════════════════════════
+assert_eq "대시보드 페이지 뜸" 200 "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/index.html")"
+DASH=$(curl -s "$BASE/api/admin/dashboard-summary")
+dpick() { echo "$DASH" | pick "$1"; }
+# 대시보드 숫자가 통계 API와 어긋나면 화면과 데이터가 따로 노는 것
+assert_eq "실효 건수 = SQL 집계" \
+  "$(sql_value "SELECT COUNT(*) FROM ticket WHERE status='EXPIRED'")" "$(dpick "d['expiredTotalCount']")"
+assert_eq "누적 거래액 = SQL 집계" \
+  "$(sql_value "SELECT SUM(amount) FROM escrow WHERE status='CONFIRMED'")" "$(dpick "d['totalTradedAmount']")"
+assert_eq "에스크로 잔액 = 정합성 검증과 일치" \
+  "$(integrity "d['escrowPoolBalance']")" "$(dpick "d['escrowPoolBalance']")"
+assert_eq "플랫폼 수익 = 정합성 검증과 일치" \
+  "$(integrity "d['platformBalance']")" "$(dpick "d['platformBalance']")"
+shot "27_대시보드_전체 / 28_대시보드_카운트다운 — 브라우저에서 $BASE/ 열고"
+info "카운트다운은 1초마다 줄고, 2시간 미만은 붉게 점멸함"
+# ══════════════════════════════════════════════════════════════
+step "10. 최종 정합성"
 # ══════════════════════════════════════════════════════════════
 check_integrity "전 시나리오 종료 후"
 shot "⭐ 29_최종정합성검증 — 이게 보고서 6장의 결론"

@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.skala.planbmarket.common.Response;
 import com.skala.planbmarket.dto.request.AdminRequests;
 import com.skala.planbmarket.dto.response.ConcurrencyTestResponse;
+import com.skala.planbmarket.dto.response.DashboardSummaryResponse;
 import com.skala.planbmarket.dto.response.IntegrityCheckResponse;
 import com.skala.planbmarket.service.AdminService;
 
@@ -43,6 +44,21 @@ public class AdminController {
     @GetMapping("/integrity-check")
     public Response<IntegrityCheckResponse> integrityCheck() {
         return Response.success(adminService.integrityCheck());
+    }
+
+    @Operation(summary = "대시보드 요약",
+            description = """
+                    대시보드 상단 카드에 들어가는 숫자들. 공개 조회.
+
+                    숫자를 고른 기준은 "가만히 두면 손해가 나는 것"이다. 이 도메인은
+                    사용자가 아무것도 안 해도 상태가 나빠지는 쪽으로만 흐르기 때문에,
+                    누적 거래액보다 지금 위험한 것(만료 임박, 오늘 실효)이 위로 온다.
+
+                    이건 JPA다 — 전부 독립적인 건수·합계라 여러 행을 구간으로 접는
+                    작업이 아니다. 카테고리별 현황(MyBatis)과 나란히 놓으면 경계가 보인다.""")
+    @GetMapping("/dashboard-summary")
+    public Response<DashboardSummaryResponse> dashboardSummary() {
+        return Response.success(adminService.dashboardSummary());
     }
 
     @Operation(summary = "동시성 테스트",

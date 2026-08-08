@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PlanB Market — 소멸 모니터링</title>
+<!--
+  단일 HTML. 외부 라이브러리 0개 — 차트도 CSS/SVG로 직접 그린다.
+  CDN에 기대면 오프라인 시연에서 화면이 통째로 비고, 이 프로젝트의 차트는
+  막대와 꺾은선 둘뿐이라 라이브러리를 끌어올 만큼 복잡하지도 않다.
+
+  이 화면의 주제는 하나다 — "가만히 두면 손해가 난다".
+  그래서 카운트다운이 1초마다 줄고, 임박한 것부터 위로 오고, 급할수록 붉어진다.
+-->
+<style>
+  :root{
+    --bg:#0a0e17; --panel:#121826; --panel2:#0e1420; --line:#1e2942;
+    --txt:#e6edf7; --dim:#8494b0; --dim2:#5a6a86;
+    --cyan:#22d3ee; --magenta:#f0369a; --amber:#fbbf24;
+    --green:#34d399; --red:#f43f5e;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--txt);
+    font-family:'Pretendard','Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif;
+    font-size:14px; line-height:1.5;
+  }
+  a{color:var(--cyan)}
+  .wrap{max-width:1180px; margin:0 auto; padding:20px 16px 60px}
+
+  /* ── 헤더 ── */
+  header{display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:6px}
+  h1{
+    font-size:22px; margin:0; letter-spacing:-.4px;
+    background:linear-gradient(90deg,var(--cyan),var(--magenta));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .sub{color:var(--dim); font-size:12px}
+  .idbar{margin-left:auto; display:flex; align-items:center; gap:8px}
+  select,button{
+    font-family:inherit; font-size:12px; color:var(--txt);
+    background:var(--panel); border:1px solid var(--line); border-radius:7px;
+    padding:6px 10px; cursor:pointer;
+  }
+  button:hover{border-color:var(--cyan)}
+  button:disabled{opacity:.5; cursor:default}
+  .who{color:var(--cyan); font-size:12px}
+
+  /* ── 카드 ── */
+  .cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin:16px 0}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px; position:relative; overflow:hidden}
+  .card::before{content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--accent,var(--line))}
+  .card .k{color:var(--dim); font-size:12px; display:flex; align-items:center; gap:6px}
+  .card .v{font-size:26px; font-weight:700; margin-top:6px; letter-spacing:-.5px}
+  .card .n{font-size:12px; color:var(--dim2); margin-top:2px}
+  .c-urgent{--accent:var(--red)} .c-loss{--accent:var(--magenta)}
+  .c-wait{--accent:var(--amber)} .c-money{--accent:var(--cyan)}
+
+  /* ── 섹션 ── */
+  section{margin-top:22px}
+  h2{font-size:13px; color:var(--dim); margin:0 0 10px; font-weight:600; letter-spacing:.3px}
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px}
+
+  /* ── 판매 목록 ── */
+  .tabs{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px}
+  .tab{font-size:12px; padding:5px 11px; border-radius:999px; border:1px solid var(--line); background:var(--panel2); color:var(--dim); cursor:pointer}
+  .tab.on{background:var(--cyan); border-color:var(--cyan); color:#04202a; font-weight:600}
+  .rows{display:flex; flex-direction:column; gap:8px}
+  .row{
+    display:flex; align-items:center; gap:12px; padding:11px 14px;
+    background:var(--panel2); border:1px solid var(--line);
+    border-left:3px solid var(--u,var(--dim2)); border-radius:9px;
+  }
+  .row .t{flex:1; min-width:0}
+  .row .title{font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .row .meta{font-size:11px; color:var(--dim2); margin-top:2px}
+  .row .cd{font-variant-numeric:tabular-nums; font-size:15px; font-weight:700; min-width:96px; text-align:right; color:var(--u,var(--txt))}
+  .row .price{min-width:96px; text-align:right; font-size:13px; color:var(--dim)}
+  .badge{font-size:10px; padding:2px 7px; border-radius:999px; border:1px solid var(--line); color:var(--dim)}
+  .blink{animation:bl 1s steps(1,end) infinite}
+  @keyframes bl{50%{opacity:.28}}
+  .empty{color:var(--dim2); font-size:12px; padding:14px 2px}
+
+  /* ── 차트 ── */
+  .charts{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+  @media(max-width:820px){.charts{grid-template-columns:1fr}}
+  .bar{display:flex; align-items:center; gap:9px; margin-bottom:7px; font-size:12px}
+  .bar .nm{width:74px; color:var(--dim); flex-shrink:0}
+  .bar .track{flex:1; height:16px; background:var(--panel2); border-radius:5px; overflow:hidden; border:1px solid var(--line)}
+  .bar .fill{height:100%; background:linear-gradient(90deg,var(--magenta),var(--amber)); border-radius:4px 0 0 4px}
+  .bar .pc{width:74px; text-align:right; color:var(--dim2); font-variant-numeric:tabular-nums}
+
+  /* ── 검증 ── */
+  .btns{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px}
+  .btn-p{border-color:var(--cyan); color:var(--cyan)}
+  .btn-d{border-color:var(--magenta); color:var(--magenta)}
+  .verdict{display:inline-flex; align-items:center; gap:7px; padding:5px 12px; border-radius:999px; font-size:12px; font-weight:700}
+  .pass{background:rgba(52,211,153,.13); color:var(--green); border:1px solid rgba(52,211,153,.45)}
+  .fail{background:rgba(244,63,94,.13); color:var(--red); border:1px solid rgba(244,63,94,.45)}
+  pre{
+    background:var(--panel2); border:1px solid var(--line); border-radius:9px;
+    padding:11px 13px; font-size:11.5px; line-height:1.55; overflow:auto; max-height:340px;
+    margin:10px 0 0; white-space:pre-wrap; word-break:break-all; color:var(--dim);
+  }
+  .cmp{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+  @media(max-width:820px){.cmp{grid-template-columns:1fr}}
+  .cmp h3{font-size:12px; margin:0; color:var(--dim)}
+  .foot{margin-top:26px; color:var(--dim2); font-size:11px; text-align:center}
+  .tick{color:var(--dim2); font-size:11px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>PlanB Market</h1>
+    <span class="sub">소멸 모니터링 · <span id="tick" class="tick">—</span></span>
+    <div class="idbar">
+      <select id="who">
+        <option value="">로그인 안 함</option>
+        <option>user01</option><option>user02</option><option>user03</option>
+        <option>user04</option><option>user05</option>
+      </select>
+      <button id="btn-login">로그인</button>
+      <span id="me" class="who"></span>
+    </div>
+  </header>
+
+  <div class="cards">
+    <div class="card c-urgent"><div class="k">⏰ 만료 임박 <span class="badge">24h</span></div><div class="v" id="c-soon">—</div><div class="n">판매 중인데 곧 사라짐</div></div>
+    <div class="card c-loss"><div class="k">💀 오늘 실효</div><div class="v" id="c-exp">—</div><div class="n" id="c-loss">—</div></div>
+    <div class="card c-wait"><div class="k">🤝 예약 중</div><div class="v" id="c-res">—</div><div class="n" id="c-esc">—</div></div>
+    <div class="card c-money"><div class="k">💰 누적 거래액</div><div class="v" id="c-amt">—</div><div class="n" id="c-cnt">—</div></div>
+  </div>
+
+  <section>
+    <h2>⚠️ 만료 임박 · 잔여시간 순</h2>
+    <div class="panel">
+      <div class="tabs" id="tabs"></div>
+      <div class="rows" id="rows"><div class="empty">불러오는 중…</div></div>
+    </div>
+  </section>
+
+  <section class="charts">
+    <div>
+      <h2>📊 카테고리별 실효율</h2>
+      <div class="panel" id="chart-cat"><div class="empty">불러오는 중…</div></div>
+    </div>
+    <div>
+      <h2>📉 일별 실효 손실 (7일)</h2>
+      <div class="panel" id="chart-loss"><div class="empty">불러오는 중…</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>🔍 검증</h2>
+    <div class="panel">
+      <div class="btns">
+        <button class="btn-p" id="btn-integ">정합성 검증</button>
+        <span id="integ-badge"></span>
+      </div>
+      <pre id="integ-out" hidden></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>⚡ 동시성 테스트 — 판매 4번에 20개 스레드 동시 예약</h2>
+    <div class="panel">
+      <div class="btns">
+        <button class="btn-d" id="btn-nolock">락 없이 20건 발사</button>
+        <button class="btn-p" id="btn-lock">락 적용 20건 발사</button>
+        <span id="conc-note" class="sub"></span>
+      </div>
+      <div class="cmp">
+        <div><h3>락 없음</h3><pre id="out-nolock" hidden></pre></div>
+        <div><h3>락 적용</h3><pre id="out-lock" hidden></pre></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="foot">
+    <a href="/swagger-ui.html">Swagger</a> ·
+    <a href="/h2-console">H2</a> ·
+    <a href="/actuator/health">Health</a> ·
+    <a href="/actuator/metrics/planb.escrow.confirmed">Metrics</a>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ─────────────────────────────────────────────────────────
+   공통
+   ───────────────────────────────────────────────────────── */
+const $ = id => document.getElementById(id);
+const won = n => (n ?? 0).toLocaleString('ko-KR') + '원';
+const j = o => JSON.stringify(o, null, 2);
+
+// 실패해도 화면 전체가 죽지 않게 한다. 폴링이 5초마다 도는데
+// 한 번의 네트워크 오류로 대시보드가 멈추면 모니터링이라 부를 수 없다
+async function api(path, opts) {
+  try {
+    const r = await fetch(path, Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts));
+    const body = await r.json().catch(() => null);
+    return { ok: r.ok, status: r.status, body: body && body.body, raw: body };
+  } catch (e) {
+    return { ok: false, status: 0, body: null, raw: { message: String(e) } };
+  }
+}
+
+/* ─────────────────────────────────────────────────────────
+   잔여시간 — 이 화면의 주인공
+   ───────────────────────────────────────────────────────── */
+// 서버 시각과 브라우저 시각이 어긋나면 카운트다운이 통째로 밀린다.
+// 대시보드 요약에 checkedAt이 들어 있으니 그걸로 시차를 한 번 재서 보정한다
+let skewMs = 0;
+
+function remain(iso) {
+  return new Date(iso).getTime() - (Date.now() + skewMs);
+}
+
+/** 긴급도 → 색. 2시간 미만은 점멸까지 */
+function urgency(ms) {
+  if (ms <= 0)             return { c: 'var(--dim2)', blink: false };
+  if (ms < 2 * 3600e3)     return { c: 'var(--red)',   blink: true  };
+  if (ms < 12 * 3600e3)    return { c: 'var(--amber)', blink: false };
+  if (ms < 72 * 3600e3)    return { c: 'var(--cyan)',  blink: false };
+  return                          { c: 'var(--green)', blink: false };
+}
+
+function fmt(ms) {
+  if (ms <= 0) return '만료됨';
+  const s = Math.floor(ms / 1000);
+  const d = Math.floor(s / 86400);
+  const h = String(Math.floor(s % 86400 / 3600)).padStart(2, '0');
+  const m = String(Math.floor(s % 3600 / 60)).padStart(2, '0');
+  const sec = String(s % 60).padStart(2, '0');
+  return d > 0 ? `${d}일 ${h}:${m}:${sec}` : `${h}:${m}:${sec}`;
+}
+
+/* ─────────────────────────────────────────────────────────
+   상단 카드
+   ───────────────────────────────────────────────────────── */
+async function loadSummary() {
+  const r = await api('/api/admin/dashboard-summary');
+  if (!r.ok || !r.body) return;
+  const d = r.body;
+
+  // 서버 시각과의 시차 보정
+  skewMs = new Date(d.checkedAt).getTime() - Date.now();
+
+  $('c-soon').textContent = d.expiringSoonCount + '건';
+  $('c-exp').textContent  = d.expiredTodayCount + '건';
+  $('c-loss').textContent = d.expiredTodayLoss > 0 ? '−' + won(d.expiredTodayLoss) : '손실 없음';
+  $('c-res').textContent  = d.reservedCount + '건';
+  $('c-esc').textContent  = '에스크로 보관 ' + d.inEscrowCount + '건 · ' + won(d.escrowPoolBalance);
+  $('c-amt').textContent  = won(d.totalTradedAmount);
+  $('c-cnt').textContent  = '확정 ' + d.completedCount + '건 · 플랫폼 수익 ' + won(d.platformBalance);
+  $('tick').textContent   = new Date(d.checkedAt).toLocaleTimeString('ko-KR');
+}
+
+/* ─────────────────────────────────────────────────────────
+   판매 목록
+   ───────────────────────────────────────────────────────── */
+const CATS = [
+  ['', '전체'], ['MOVIE', '영화'], ['CONCERT', '콘서트'], ['SPORTS', '스포츠'],
+  ['EXHIBITION', '전시'], ['TRAIN', '기차'], ['FLIGHT', '항공'],
+  ['HOTEL', '호텔'], ['GIFTICON', '기프티콘'],
+];
+let cat = '';
+let listings = [];
+
+function renderTabs() {
+  $('tabs').innerHTML = '';
+  CATS.forEach(([v, label]) => {
+    const b = document.createElement('span');
+    b.className = 'tab' + (v === cat ? ' on' : '');
+    b.textContent = label;
+    b.onclick = () => { cat = v; renderTabs(); loadListings(); };
+    $('tabs').appendChild(b);
+  });
+}
+
+async function loadListings() {
+  const q = '/api/listings/list?count=40&sort=expiry' + (cat ? '&category=' + cat : '');
+  const r = await api(q);
+  listings = (r.ok && r.body && r.body.list) ? r.body.list : [];
+  renderRows();
+}
+
+function renderRows() {
+  const box = $('rows');
+  if (!listings.length) {
+    box.innerHTML = '<div class="empty">해당 조건에 판매 중인 티켓이 없습니다.</div>';
+    return;
+  }
+  box.innerHTML = '';
+  listings.forEach(l => {
+    // 티켓 정보는 listing 아래 ticket에 중첩돼서 온다.
+    // 목록 한 페이지에 티켓을 20번 더 부르지 않으려고 한 번에 실어 보내는 구조
+    const t = l.ticket || {};
+    const ms = remain(t.expiresAt);
+    const u = urgency(ms);
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.style.setProperty('--u', u.c);
+    row.innerHTML =
+      '<div class="t">' +
+        '<div class="title">' + esc(t.title) + '</div>' +
+        '<div class="meta">' + esc(t.categoryName || t.category) +
+          ' · ' + esc(l.status) + ' · ' + (t.quantity ?? 1) + '매 · 판매자 ' + esc(l.sellerId) + '</div>' +
+      '</div>' +
+      '<div class="price">' + won(l.askingPrice) +
+        '<div class="meta">정가 ' + won(t.originalPrice) + '</div></div>' +
+      '<div class="cd' + (u.blink ? ' blink' : '') + '" data-exp="' + t.expiresAt + '">' + fmt(ms) + '</div>';
+    box.appendChild(row);
+  });
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/* 1초마다 숫자만 갱신한다. 목록 전체를 다시 그리면 스크롤이 튀고 깜빡인다 */
+function tickCountdowns() {
+  document.querySelectorAll('.cd[data-exp]').forEach(el => {
+    const ms = remain(el.dataset.exp);
+    const u = urgency(ms);
+    el.textContent = fmt(ms);
+    el.classList.toggle('blink', u.blink);
+    el.parentElement.style.setProperty('--u', u.c);
+  });
+}
+
+/* ─────────────────────────────────────────────────────────
+   차트 — 라이브러리 없이 CSS/SVG로
+   ───────────────────────────────────────────────────────── */
+async function loadCharts() {
+  const cs = await api('/api/analysis/category-summary');
+  const box = $('chart-cat');
+  if (cs.ok && cs.body) {
+    const rows = cs.body.categories.filter(c => c.tradedCount + c.expiredCount > 0);
+    box.innerHTML = rows.length ? '' : '<div class="empty">결말이 난 티켓이 아직 없습니다.</div>';
+    rows.forEach(c => {
+      const pct = Math.round(c.expiryRate * 1000) / 10;
+      const el = document.createElement('div');
+      el.className = 'bar';
+      el.innerHTML =
+        '<span class="nm">' + esc(c.displayName) + '</span>' +
+        '<span class="track"><span class="fill" style="width:' + Math.max(pct, 1.5) + '%"></span></span>' +
+        '<span class="pc">' + pct + '% (' + c.expiredCount + '/' + (c.tradedCount + c.expiredCount) + ')</span>';
+      box.appendChild(el);
+    });
+  }
+
+  const ls = await api('/api/analysis/expiry-loss?days=7');
+  const lbox = $('chart-loss');
+  if (ls.ok && ls.body) {
+    const daily = ls.body.daily;
+    lbox.innerHTML = daily.length ? '' : '<div class="empty">최근 7일간 실효가 없습니다.</div>';
+    if (daily.length) lbox.appendChild(lineChart(daily, ls.body.totals));
+  }
+}
+
+/** 꺾은선 — SVG를 손으로 그린다. 점 몇 개짜리라 라이브러리가 과하다 */
+function lineChart(daily, totals) {
+  const W = 460, H = 150, P = 30;
+  const max = Math.max(...daily.map(d => d.originalLoss), 1);
+  const x = i => daily.length === 1 ? W / 2 : P + i * (W - P * 2) / (daily.length - 1);
+  const y = v => H - P - (v / max) * (H - P * 2);
+
+  const pts = daily.map((d, i) => x(i) + ',' + y(d.originalLoss)).join(' ');
+  const dots = daily.map((d, i) =>
+    `<circle cx="${x(i)}" cy="${y(d.originalLoss)}" r="3.5" fill="var(--magenta)"/>` +
+    `<text x="${x(i)}" y="${y(d.originalLoss) - 9}" fill="var(--dim)" font-size="9" text-anchor="middle">` +
+      (d.originalLoss / 1000).toFixed(0) + 'k</text>' +
+    `<text x="${x(i)}" y="${H - 9}" fill="var(--dim2)" font-size="9" text-anchor="middle">` +
+      d.lossDate.slice(5) + '</text>').join('');
+
+  const wrap = document.createElement('div');
+  wrap.innerHTML =
+    `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">
+       <line x1="${P}" y1="${H - P}" x2="${W - P}" y2="${H - P}" stroke="var(--line)"/>
+       <polyline points="${pts}" fill="none" stroke="var(--magenta)" stroke-width="2"/>
+       ${dots}
+     </svg>
+     <div class="sub" style="margin-top:6px">
+       7일 합계 정가 −${totals.originalLoss.toLocaleString('ko-KR')}원 ·
+       시장가 −${totals.marketLoss.toLocaleString('ko-KR')}원 ·
+       시장에 나오지도 못한 건 ${totals.neverListedCount}건
+     </div>`;
+  return wrap;
+}
+
+/* ─────────────────────────────────────────────────────────
+   검증 · 동시성
+   ───────────────────────────────────────────────────────── */
+$('btn-integ').onclick = async () => {
+  const r = await api('/api/admin/integrity-check');
+  const d = r.body || {};
+  $('integ-badge').innerHTML =
+    '<span class="verdict ' + (d.passed ? 'pass' : 'fail') + '">' +
+    (d.passed ? '✓ PASS — 돈이 새지 않았습니다' : '✗ FAIL — 어딘가 어긋났습니다') + '</span>';
+  const out = $('integ-out');
+  out.hidden = false;
+  out.textContent = j(d);
+};
+
+async function runConcurrency(useLock, outId, btn) {
+  btn.disabled = true;
+  $('conc-note').textContent = '발사 중…';
+  const r = await api('/api/admin/simulate-concurrent', {
+    method: 'POST',
+    body: JSON.stringify({ listingId: 4, threadCount: 20, useLock }),
+  });
+  const out = $(outId);
+  out.hidden = false;
+  out.textContent = r.ok ? j(r.body) : j(r.raw);
+  $('conc-note').textContent = r.ok
+    ? '끝나면 만들어진 예약을 전액 환불로 되돌리므로 몇 번이든 다시 돌릴 수 있습니다.'
+    : '판매 4번이 OPEN이 아니면 실행되지 않습니다.';
+  btn.disabled = false;
+  loadSummary();
+}
+
+$('btn-nolock').onclick = e => runConcurrency(false, 'out-nolock', e.target);
+$('btn-lock').onclick   = e => runConcurrency(true,  'out-lock',   e.target);
+
+/* ─────────────────────────────────────────────────────────
+   로그인 — 알림 폴링에 필요
+   ───────────────────────────────────────────────────────── */
+let me = null;
+
+$('btn-login').onclick = async () => {
+  const id = $('who').value;
+  if (!id) {
+    await api('/api/members/logout', { method: 'POST' });
+    me = null;
+    $('me').textContent = '';
+    return;
+  }
+  const r = await api('/api/members/login', {
+    method: 'POST',
+    body: JSON.stringify({ id, password: 'pass1234' }),
+  });
+  me = r.ok ? id : null;
+  $('me').textContent = r.ok ? '' : '로그인 실패';
+  loadNotifications();
+};
+
+async function loadNotifications() {
+  if (!me) return;
+  const r = await api('/api/members/' + me + '/notifications/unread-count');
+  if (r.ok) {
+    const n = r.body ?? 0;
+    $('me').textContent = me + ' · 안읽음 ' + n + '건';
+  }
+}
+
+/* ─────────────────────────────────────────────────────────
+   구동
+   ───────────────────────────────────────────────────────── */
+function refresh() {
+  loadSummary();
+  loadListings();
+  loadCharts();
+  loadNotifications();
+}
+
+renderTabs();
+refresh();
+setInterval(tickCountdowns, 1000);   // 카운트다운은 1초
+setInterval(refresh, 5000);          // 데이터 갱신은 5초
+</script>
+</body>
+</html>

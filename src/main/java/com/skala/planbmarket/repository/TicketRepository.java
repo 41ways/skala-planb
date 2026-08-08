@@ -8,6 +8,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import com.skala.planbmarket.domain.entity.Ticket;
@@ -52,4 +54,27 @@ public interface TicketRepository extends JpaRepository<Ticket, Long> {
      * 없어서 MyBatis까지 갈 이유가 없음. 그 경계 판단은 AnalysisMapper 주석 참조.
      */
     long countByOwnerIdAndStatus(String ownerId, TicketStatus status);
+
+    /**
+     * 만료 백로그 — 시각이 지났는데 아직 실효 처리가 안 된 티켓 수.
+     *
+     * HealthIndicator가 이 숫자를 본다. 스케줄러가 1분 주기라 잠깐 밀리는 건 정상이고,
+     * 계속 쌓이면 스케줄러가 죽었거나 처리가 막힌 것이다.
+     */
+    long countByStatusInAndExpiresAtBefore(Collection<TicketStatus> statuses, LocalDateTime now);
+
+    /** 대시보드 — 상태별 전체 건수 */
+    long countByStatus(TicketStatus status);
+
+    /** 대시보드 — 기간 내 실효된 티켓 수 (만료 시각 기준) */
+    long countByStatusAndExpiresAtBetween(TicketStatus status, LocalDateTime from, LocalDateTime to);
+
+    /** 대시보드 — 기간 내 실효분의 정가 합 */
+    @Query("""
+            SELECT COALESCE(SUM(t.originalPrice), 0) FROM Ticket t
+            WHERE t.status = :status AND t.expiresAt BETWEEN :from AND :to
+            """)
+    long sumOriginalPriceExpiredBetween(@Param("status") TicketStatus status,
+                                        @Param("from") LocalDateTime from,
+                                        @Param("to") LocalDateTime to);
 }

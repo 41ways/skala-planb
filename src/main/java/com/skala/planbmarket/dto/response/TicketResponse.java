@@ -36,10 +36,7 @@ public record TicketResponse(
         TicketStatus status,
 
         @Schema(description = "만료까지 남은 분. 이미 지났으면 음수")
-        long remainingMinutes,
-
-        @Schema(description = "분할 발행된 티켓이면 원본 ID. 직접 등록한 것이면 null")
-        Long sourceTicketId
+        long remainingMinutes
 ) {
 
     public static TicketResponse from(Ticket ticket) {
@@ -63,7 +60,6 @@ public record TicketResponse(
                 ticket.getExtendedUntil(),
                 ticket.getExpiresAt(),
                 ticket.getStatus(),
-                Duration.between(now, ticket.getExpiresAt()).toMinutes(),
-                ticket.getSourceTicketId());
+                Duration.between(now, ticket.getExpiresAt()).toMinutes());
     }
 }

@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.skala.planbmarket.common.PagedList;
+import com.skala.planbmarket.common.PlanbMetrics;
 import com.skala.planbmarket.common.Paging;
 import com.skala.planbmarket.common.SessionHandler;
 import com.skala.planbmarket.common.TradePolicy;
@@ -63,6 +64,7 @@ public class EscrowService {
     private final LedgerService ledgerService;
     private final NotificationService notificationService;
     private final SessionHandler sessionHandler;
+    private final PlanbMetrics metrics;
 
     // ══════════════════════════════════════════════════════════════
     // 1단계 — 예약
@@ -123,6 +125,7 @@ public class EscrowService {
 
         Deposit deposit = depositService.hold(buyer, listing, depositAmount, deadline);
         listing.changeStatus(ListingStatus.RESERVED);
+        metrics.reservationCreated();
 
         return ReservationResponse.from(deposit, TradePolicy.COOLING_OFF_MINUTES);
     }
@@ -231,6 +234,7 @@ public class EscrowService {
         }
 
         listing.changeStatus(ListingStatus.IN_ESCROW);
+        metrics.escrowCreated();
         return EscrowResponse.from(escrow);
     }
 
@@ -269,6 +273,9 @@ public class EscrowService {
         }
 
         escrow.confirm(now);
+        // confirm()이 아니라 여기서 센다. 자동확정 스케줄러도 이 메서드로 들어오기 때문 —
+        // 바깥에서 세면 "시간이 알아서 처리한" 확정이 통째로 빠진다
+        metrics.escrowConfirmed();
 
         long sellerAmount = escrow.sellerAmount();
         long commission = TradePolicy.commissionOf(sellerAmount);

@@ -57,4 +57,7 @@ public interface DepositRepository extends JpaRepository<Deposit, Long> {
 
     /** 시뮬레이터 결과 판정용 — 판매 건에 걸린 진행 중 예약 건수 */
     long countByListingIdAndStatus(Long listingId, DepositStatus status);
+
+    /** 대시보드 — 상태별 전체 예약금 건수 */
+    long countByStatus(DepositStatus status);
 }

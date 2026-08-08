@@ -48,6 +48,9 @@ public interface EscrowRepository extends JpaRepository<Escrow, Long> {
     @Query("SELECT COALESCE(SUM(e.amount), 0) FROM Escrow e WHERE e.status = :status")
     long sumHeldAmount(@Param("status") EscrowStatus status);
 
+    /** 대시보드 — 상태별 거래 건수 */
+    long countByStatus(EscrowStatus status);
+
     /** 거래 요약용 — 구매자로서의 상태별 건수 */
     long countByBuyerIdAndStatus(String buyerId, EscrowStatus status);
 

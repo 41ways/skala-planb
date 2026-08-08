@@ -24,10 +24,13 @@ import com.skala.planbmarket.domain.entity.Member;
 import com.skala.planbmarket.domain.enums.DepositStatus;
 import com.skala.planbmarket.domain.enums.EntryType;
 import com.skala.planbmarket.domain.enums.EscrowStatus;
+import com.skala.planbmarket.domain.enums.ListingStatus;
 import com.skala.planbmarket.domain.enums.LedgerReason;
 import com.skala.planbmarket.domain.enums.SystemAccount;
+import com.skala.planbmarket.domain.enums.TicketStatus;
 import com.skala.planbmarket.dto.request.AdminRequests;
 import com.skala.planbmarket.dto.response.ConcurrencyTestResponse;
+import com.skala.planbmarket.dto.response.DashboardSummaryResponse;
 import com.skala.planbmarket.dto.response.IntegrityCheckResponse;
 import com.skala.planbmarket.exception.Error;
 import com.skala.planbmarket.exception.ResponseException;
@@ -35,6 +38,7 @@ import com.skala.planbmarket.repository.DepositRepository;
 import com.skala.planbmarket.repository.EscrowRepository;
 import com.skala.planbmarket.repository.LedgerRepository;
 import com.skala.planbmarket.repository.ListingRepository;
+import com.skala.planbmarket.repository.TicketRepository;
 import com.skala.planbmarket.repository.MemberRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -56,6 +60,13 @@ public class AdminService {
     /** 시뮬레이션이 이 시간 안에 안 끝나면 어딘가 물린 것으로 보고 넘어감 */
     private static final long SIMULATION_TIMEOUT_SECONDS = 30;
 
+    /** 대시보드가 '만료 임박'으로 보는 기준. SPEC 10장의 24시간 */
+    private static final long EXPIRING_SOON_HOURS = 24;
+
+    /** 아직 구매 가능하거나 진행 중인 판매 상태 */
+    private static final List<ListingStatus> BROWSABLE = List.of(
+            ListingStatus.OPEN, ListingStatus.RESERVED, ListingStatus.IN_ESCROW);
+
     private final LedgerRepository ledgerRepository;
     private final MemberRepository memberRepository;
     private final EscrowRepository escrowRepository;
@@ -63,6 +74,7 @@ public class AdminService {
     private final ListingRepository listingRepository;
     private final EscrowService escrowService;
     private final LedgerService ledgerService;
+    private final TicketRepository ticketRepository;
 
     /**
      * 동시성 테스트. 같은 판매 건에 N개 스레드가 동시에 예약을 건다.
@@ -170,6 +182,38 @@ public class AdminService {
                         .toList(),
                 elapsedMs, cleanedUp,
                 verdict(useLock, reservationCount, dataIntegrity, lostUpdates));
+    }
+
+    /**
+     * 대시보드 상단 요약.
+     *
+     * 전부 독립적인 건수·합계라 JPA로 충분함. 여러 행을 구간으로 접는 작업이 아니라서
+     * MyBatis로 옮길 이유가 없음 — 카테고리별 현황과 나란히 놓으면 경계가 잘 보임.
+     *
+     * "오늘"은 자정부터 지금까지로 봄. 실효 날짜 키는 통계 API와 같은 expiresAt 기준이라
+     * 두 화면의 숫자가 어긋나지 않음.
+     */
+    public DashboardSummaryResponse dashboardSummary() {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime todayStart = now.toLocalDate().atStartOfDay();
+
+        return new DashboardSummaryResponse(
+                listingRepository.countByStatusInAndTicketExpiresAtBetween(
+                        BROWSABLE, now, now.plusHours(EXPIRING_SOON_HOURS)),
+                ticketRepository.countByStatusAndExpiresAtBetween(
+                        TicketStatus.EXPIRED, todayStart, now),
+                ticketRepository.sumOriginalPriceExpiredBetween(
+                        TicketStatus.EXPIRED, todayStart, now),
+                depositRepository.countByStatus(DepositStatus.HELD),
+                escrowRepository.countByStatus(EscrowStatus.HOLDING),
+                listingRepository.countByStatus(ListingStatus.OPEN),
+                escrowRepository.sumHeldAmount(EscrowStatus.CONFIRMED),
+                escrowRepository.countByStatus(EscrowStatus.CONFIRMED),
+                ticketRepository.countByStatus(TicketStatus.EXPIRED),
+                ledgerRepository.balanceOf(SystemAccount.PLATFORM.name(), EntryType.CREDIT),
+                ledgerRepository.balanceOf(SystemAccount.ESCROW_POOL.name(), EntryType.CREDIT),
+                ledgerRepository.balanceOf(SystemAccount.DEPOSIT_POOL.name(), EntryType.CREDIT),
+                now);
     }
 
     /** 결과를 한 줄로. 캡처에 그대로 들어갈 문장이라 무슨 일이 났는지가 바로 읽혀야 함 */
