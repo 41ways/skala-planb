@@ -73,7 +73,7 @@ H2 콘솔은 JDBC URL을 **`jdbc:h2:mem:planb`** 로 바꿔야 한다. 사용자
 
 ## 봐주셨으면 하는 것 5가지
 
-### 1. 동시성 — 락이 없으면 실제로 깨진다 ⭐
+### 1. 동시성 — 락이 없으면 실제로 깨진다
 
 같은 판매 건에 20개 스레드가 동시에 예약을 건다. **`useLock`만 바꿔서 두 번** 돌리면 된다.
 
@@ -91,8 +91,8 @@ curl -X POST http://localhost:8080/api/admin/simulate-concurrent \
 
 | | 성공 | 예약 생성 | dataIntegrity | **ledgerBalanced** |
 |---|---|---|---|---|
-| 락 없음 | 5~9 | 5~9건 | ❌ | **✅** |
-| 락 적용 | 1 | 1건 | ✅ | ✅ |
+| 락 없음 | 5~9 | 5~9건 | X | **O** |
+| 락 적용 | 1 | 1건 | O | O |
 
 **락 없이 중복 예약이 9건 생겨도 원장 차대는 맞는다.** 홀드마다 원장 2줄이 제대로 남기
 때문이다. 돈은 한 푼도 안 샜는데 티켓 하나가 9명에게 잠겼다 —
@@ -101,7 +101,7 @@ curl -X POST http://localhost:8080/api/admin/simulate-concurrent \
 끝나면 만들어진 예약을 전액 환불로 되돌리므로 몇 번이든 다시 돌릴 수 있다.
 대시보드 하단 버튼으로도 된다.
 
-### 2. append-only 정산 원장과 자가검증 ⭐
+### 2. append-only 정산 원장과 자가검증
 
 ```bash
 curl http://localhost:8080/api/admin/integrity-check
@@ -127,7 +127,7 @@ curl http://localhost:8080/api/admin/integrity-check
 
 경계에 양쪽을 하나씩 남겨뒀다. `NOTES.md` 12절.
 
-### 4. AOP 프록시 한계 — 지표로 증명 ⭐
+### 4. AOP 프록시 한계 — 지표로 증명
 
 ```bash
 curl http://localhost:8080/actuator/metrics/planb.escrow.confirmed
@@ -147,7 +147,7 @@ http://localhost:8080/ — 외부 라이브러리 0개. 차트도 CSS/SVG로 직
 
 카운트다운이 1초마다 줄고, 2시간 미만은 붉게 점멸한다.
 행을 누르면 좌석·추천가(표본 수 포함)·예약 현황이 펼쳐진다.
-우측 상단 🌙 버튼으로 다크 테마 전환.
+우측 상단 버튼으로 다크 테마 전환.
 
 ---
 
